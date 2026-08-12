@@ -2,6 +2,34 @@
 
 Police MDT (Mobile Data Terminal) for FiveM. Built with Svelte 5 and Lua. Works on QBCore and QBX through the ps_lib abstraction layer.
 
+## Qbox quick start
+
+This Cajun Built fork is prepared for Qbox. Clone both Cajun Built forks as
+separate resources and keep their folder names exactly `ps-mdt` and `ps_lib`.
+
+The Qbox QB compatibility bridge must remain enabled because some inherited MDT
+features still use Qbox's `qb-core` compatibility provider. Put this before
+`ensure qbx_core`:
+
+```cfg
+set qbx:enablebridge "true"
+```
+
+Import `sql/qbx.sql` into the Qbox database, then start the resources in this
+order:
+
+```cfg
+ensure oxmysql
+ensure ox_lib
+ensure ox_inventory
+ensure qbx_core
+ensure ps_lib
+ensure ps-mdt
+```
+
+The compiled `web/dist` UI is tracked in this fork, so cloning it directly
+into your resources folder does not require Node.js or a frontend build.
+
 ## What is this
 
 A full in-game law enforcement computer. Officers press F11 or type `/mdt` to open it. From there they can look up citizens, write reports, manage cases, track evidence, issue warrants, run BOLOs, look up vehicles and weapons, view security cameras and bodycam feeds, handle dispatch, and manage their department. Everything is permission-based so you control exactly what each rank has access to.
@@ -12,9 +40,11 @@ These need to be running on your server:
 
 | Resource | Why |
 |----------|-----|
+| [qbx_core](https://github.com/Qbox-project/qbx_core) | Qbox framework |
 | [ps_lib](https://github.com/Project-Sloth/ps_lib) | Framework abstraction layer |
 | [oxmysql](https://github.com/overextended/oxmysql) | Database |
 | [ox_lib](https://github.com/overextended/ox_lib) | Utility library |
+| [ox_inventory](https://github.com/overextended/ox_inventory) | Qbox inventory integration |
 | [screenshot-basic](https://github.com/citizenfx/screenshot-basic) | Mugshot capture |
 
 
@@ -28,9 +58,10 @@ Optional but HIGHLY RECOMMENDED:
 ## Installation
 No backwards compatibility with ps-mdtv1.
 
-### 1. Add DOJ jobs to QBCore
+### 1. Add optional DOJ jobs
 
-First, remove the default `judge` and `lawyer` entries from `qb-core/shared/jobs.lua`:
+For Qbox, edit `qbx_core/shared/jobs.lua`. Remove existing `judge` and
+`lawyer` entries before adding the definitions below:
 
 ```lua
 -- REMOVE THESE
@@ -65,9 +96,10 @@ lawyer = {
 },
 ```
 
-### 2. Import the database
+### 2. Import the Qbox database
 
-Run `sql/qbcore.sql` against your FiveM database. This creates all the tables the MDT needs. Use phpMyAdmin, HeidiSQL, or whatever database tool you prefer.
+Run `sql/qbx.sql` against your FiveM database. This creates all the tables the
+MDT needs. Use phpMyAdmin, HeidiSQL, or whatever database tool you prefer.
 
 ### 3. Set your FiveManage API keys
 
@@ -89,22 +121,23 @@ Both are optional. Without the images key you won't be able to upload any images
 
 ### 4. Build the frontend
 
-If you grabbed a release with `web/dist` already in it, skip this step.
-
-Otherwise:
+This Cajun Built fork tracks `web/dist`, so a direct clone can skip this step.
+Only rebuild the frontend after changing files under `web/src`.
 
 ```
-cd resources/[qb]/ps-mdt/web
-npm install
+cd resources/[qbox]/ps-mdt/web
+npm ci
 npm run build
 ```
 
 ### 5. Add to server.cfg
 
 ```
-ensure ps_lib
 ensure oxmysql
 ensure ox_lib
+ensure ox_inventory
+ensure qbx_core
+ensure ps_lib
 ensure ps-mdt
 ```
 
