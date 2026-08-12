@@ -174,7 +174,7 @@ local function officerInfo(src)
     local cid = ps.getIdentifier and ps.getIdentifier(src) or nil
     local name
     local ok, res = pcall(function()
-        return (ps.getCharInfo('firstname', src) or '') .. ' ' .. (ps.getCharInfo('lastname', src) or '')
+        return (ps.getCharInfo(src, 'firstname') or '') .. ' ' .. (ps.getCharInfo(src, 'lastname') or '')
     end)
     if ok and res then name = res:gsub('^%s+', ''):gsub('%s+$', '') end
     if name == '' then name = nil end
@@ -518,31 +518,12 @@ end
 -- ps.getPlayerByIdentifier, which is proven to work here.
 local function payOfficer(src, account, amount, reason)
     if amount <= 0 then return true end
-
-    local cid = ps.getIdentifier and ps.getIdentifier(src) or nil
-    local Player = cid and ps.getPlayerByIdentifier(cid) or nil
-
-    if Player and Player.Functions and Player.Functions.AddMoney then
-        local ok = pcall(Player.Functions.AddMoney, account, amount, reason)
-        if ok then return true end
-    end
-
-    -- Fall back to the core export if the bridge handed us something unexpected.
-    local ok = pcall(function()
-        local core = GetResourceState('qbx_core') == 'started'
-            and exports['qbx_core']:GetCoreObject()
-            or exports['qb-core']:GetCoreObject()
-        local P = core.Functions.GetPlayer(src)
-        if not P or not P.Functions or not P.Functions.AddMoney then
-            error('no usable player object')
-        end
-        P.Functions.AddMoney(account, amount, reason)
-    end)
-
-    if not ok then
+    local ok, paid = pcall(ps.addMoney, src, account, amount, reason)
+    if not ok or paid == false then
         ps.warn(('[impound] could not pay $%d to source %s'):format(amount, tostring(src)))
+        return false
     end
-    return ok
+    return true
 end
 
 -- Resolve a client-supplied net id to a real vehicle the officer is standing at.

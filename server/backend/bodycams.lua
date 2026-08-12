@@ -8,19 +8,21 @@ end
 
 local function shouldUseQbCore()
     local cfg = getBodycamConfig()
+    if MDTFramework and MDTFramework.is('esx') then
+        return false
+    end
     if cfg.DutyEventMode == 'pslib' then
         return false
     end
-    return exports[cfg.DutyResource] ~= nil
+    return GetResourceState(cfg.DutyResource) == 'started'
+        or GetResourceState('qbx_core') == 'started'
 end
 
 local function getQbCoreObject()
+    if not shouldUseQbCore() then return nil end
     local cfg = getBodycamConfig()
-    local resource = exports[cfg.DutyResource]
-    if not resource then
-        return nil
-    end
-    return resource:GetCoreObject()
+    local ok, core = pcall(function() return exports[cfg.DutyResource]:GetCoreObject() end)
+    return ok and core or nil
 end
 
 local function getOnDutyOfficers()
@@ -348,7 +350,12 @@ end
 local function registerDutyEvents()
     local cfg = getBodycamConfig()
 
-    if cfg.DutyEventMode == 'qbcore' then
+    if MDTFramework and MDTFramework.is('esx') then
+        AddEventHandler('esx:setJob', function(playerId, job)
+            if not playerId or not job then return end
+            handleDutyChange(playerId, job, job.onDuty ~= false, nil)
+        end)
+    elseif cfg.DutyEventMode == 'qbcore' or cfg.DutyEventMode == 'auto' then
         RegisterNetEvent(cfg.DutyEvent, function(source, job)
             local src = source
             if not src or not job then return end

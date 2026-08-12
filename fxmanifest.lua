@@ -12,14 +12,14 @@ ui_page 'web/dist/index.html'
 
 dependencies {
   'ps_lib',
-  'qbx_core',
   'oxmysql',
   'ox_lib'
 }
 
 shared_scripts {
   'config.lua',
-  '@ox_lib/init.lua'
+  '@ox_lib/init.lua',
+  'bridge/shared.lua'
 }
 
 client_script {
@@ -28,6 +28,7 @@ client_script {
 
 server_scripts {
   '@oxmysql/lib/MySQL.lua',
+  'bridge/server.lua',
   'server/**.lua'
 }
 

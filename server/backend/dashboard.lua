@@ -742,7 +742,7 @@ ps.registerCallback(resourceName .. ':server:setDispatchNote', function(source, 
     local existed = DispatchNotes[id] ~= nil
     local okName, author = pcall(function()
         if ps.getCharInfo then
-            return (ps.getCharInfo('firstname', src) or '') .. ' ' .. (ps.getCharInfo('lastname', src) or '')
+            return (ps.getCharInfo(src, 'firstname') or '') .. ' ' .. (ps.getCharInfo(src, 'lastname') or '')
         end
         return nil
     end)
@@ -820,8 +820,8 @@ ps.registerCallback(resourceName .. ':server:selfDispatchAttach', function(sourc
         local exists = false
         for _, u in ipairs(call.units) do if u.citizenid == cid then exists = true break end end
         if not exists then
-            local okFirst, firstname = pcall(function() return ps.getCharInfo('firstname', src) end)
-            local okLast,  lastname  = pcall(function() return ps.getCharInfo('lastname', src) end)
+            local okFirst, firstname = pcall(function() return ps.getCharInfo(src, 'firstname') end)
+            local okLast,  lastname  = pcall(function() return ps.getCharInfo(src, 'lastname') end)
             call.units[#call.units + 1] = {
                 citizenid = cid,
                 charinfo  = {
@@ -911,7 +911,7 @@ ps.registerCallback(resourceName .. ':server:createManualDispatch', function(sou
     if note ~= '' then
         local okName, author = pcall(function()
             if ps.getCharInfo then
-                return (ps.getCharInfo('firstname', src) or '') .. ' ' .. (ps.getCharInfo('lastname', src) or '')
+                return (ps.getCharInfo(src, 'firstname') or '') .. ' ' .. (ps.getCharInfo(src, 'lastname') or '')
             end
             return nil
         end)

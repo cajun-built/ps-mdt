@@ -154,7 +154,9 @@ ps.registerCallback('ps-mdt:server:getWeapons', function(source)
             information = v.information,
             weaponClass = v.weaponClass,
             weaponModel = v.weaponModel,
-            name = (QBCore and QBCore.Shared and QBCore.Shared.Weapons and QBCore.Shared.Weapons[GetHashKey(v.weaponModel)] and QBCore.Shared.Weapons[GetHashKey(v.weaponModel)].label) or v.weaponModel,
+            name = (QBCore and QBCore.Shared and QBCore.Shared.Weapons and QBCore.Shared.Weapons[GetHashKey(v.weaponModel)] and QBCore.Shared.Weapons[GetHashKey(v.weaponModel)].label)
+                or (ps.getItemLabel and ps.getItemLabel(string.lower(v.weaponModel)))
+                or v.weaponModel,
             image = Config.WeaponImagePath .. v.weaponModel:upper() .. '.png',
             type = class[modelLower] and class[modelLower].type or 'unknown',
             flags = v.flags and json.decode(v.flags) or {},
@@ -316,8 +318,7 @@ end)
 -- Scan player inventory for weapons (for self-register)
 ps.registerCallback(resourceName .. ':server:getWeaponInfo', function(source)
     local src = source
-    if not QBCore then return {} end
-    local Player = QBCore.Functions.GetPlayer(src)
+    local Player = ps.getPlayer(src)
     if not Player then return {} end
 
     local weaponInfos = {}
@@ -333,7 +334,7 @@ ps.registerCallback(resourceName .. ':server:getWeaponInfo', function(source)
                     weaponInfos[#weaponInfos + 1] = {
                         serialnumber = item.metadata and item.metadata.serial or 'Unknown',
                         owner = Player.PlayerData.charinfo.firstname .. ' ' .. Player.PlayerData.charinfo.lastname,
-                        weaponmodel = (QBCore.Shared.Items[string.lower(item.name)] and QBCore.Shared.Items[string.lower(item.name)].label) or item.name,
+                        weaponmodel = (ps.getItemLabel and ps.getItemLabel(string.lower(item.name))) or item.name,
                         weaponurl = invImage,
                         notes = 'Self Registered',
                         weapClass = 1,
@@ -348,7 +349,7 @@ ps.registerCallback(resourceName .. ':server:getWeaponInfo', function(source)
                     weaponInfos[#weaponInfos + 1] = {
                         serialnumber = item.info and item.info.serie or 'Unknown',
                         owner = Player.PlayerData.charinfo.firstname .. ' ' .. Player.PlayerData.charinfo.lastname,
-                        weaponmodel = (QBCore.Shared.Items[item.name] and QBCore.Shared.Items[item.name].label) or item.name,
+                        weaponmodel = (ps.getItemLabel and ps.getItemLabel(item.name)) or item.name,
                         weaponurl = item.image or '',
                         notes = 'Self Registered',
                         weapClass = 1,
@@ -371,10 +372,7 @@ CreateThread(function()
     exports.ox_inventory:registerHook('buyItem', function(payload)
         if not payload.itemName or not string.find(payload.itemName, 'WEAPON_') then return true end
         CreateThread(function()
-            if not QBCore then return end
-            local Player = QBCore.Functions.GetPlayer(payload.source)
-            if not Player then return end
-            local owner = Player.PlayerData.citizenid
+            local owner = ps.getIdentifier(payload.source)
             if not owner or not payload.metadata or not payload.metadata.serial then return end
 
             local success, err = pcall(function()
@@ -393,10 +391,7 @@ CreateThread(function()
         exports.ox_inventory:registerHook('createItem', function(payload)
             if not payload.item or not payload.item.name or not string.find(payload.item.name, 'WEAPON_') then return true end
             CreateThread(function()
-                if not QBCore then return end
-                local Player = QBCore.Functions.GetPlayer(payload.inventoryId)
-                if not Player then return end
-                local owner = Player.PlayerData.citizenid
+                local owner = ps.getIdentifier(tonumber(payload.inventoryId))
                 if not owner or not payload.metadata or not payload.metadata.serial then return end
 
                 local success, err = pcall(function()
@@ -478,11 +473,8 @@ do
     -- Clean up tracking when player drops
     AddEventHandler('playerDropped', function()
         local src = source
-        if not QBCore then return end
-        local Player = QBCore.Functions.GetPlayer(src)
-        if Player and Player.PlayerData and Player.PlayerData.citizenid then
-            knownSerials[Player.PlayerData.citizenid] = nil
-        end
+        local citizenid = ps.getIdentifier and ps.getIdentifier(src) or nil
+        if citizenid then knownSerials[citizenid] = nil end
     end)
 end
 
@@ -494,8 +486,7 @@ AddEventHandler(resourceName .. ':server:selfRegisterWeapon', function(serial, i
     if not serial then return end
 
     -- Derive owner server-side from player data instead of trusting client
-    local Player = QBCore and QBCore.Functions.GetPlayer(src)
-    local serverOwner = Player and Player.PlayerData.citizenid or ps.getIdentifier(src)
+    local serverOwner = ps.getIdentifier(src)
 
     local success, err = pcall(function()
         exports[resourceName]:registerWeapon(serverOwner, weapModel or 'unknown', serial, notes or 'Self Registered')

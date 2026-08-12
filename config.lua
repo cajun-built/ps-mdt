@@ -2,6 +2,7 @@ Config = {}
 ps = exports.ps_lib:init()
 
 -- Basic Settings
+Config.Framework = 'auto' -- auto, qbx, qb, or esx
 Config.Debug = false -- Enable/disable debug mode (boolean)
 Config.OnlyShowOnDuty = true -- Only allow the MDT to be opened when on duty (boolean)
 
@@ -699,10 +700,19 @@ Config.ManagementPermissions = {
 -- Bodycam Settings (override defaults if needed, remove to use built-in defaults)
 Config.Bodycam = {
     DutyEvent = 'QBCore:Server:OnJobUpdate',
-    DutyEventMode = 'qbcore',
+    DutyEventMode = 'auto',
     MultiJobDutyEvent = 'ps-multijob:server:dutyChanged',
     DutyResource = 'qb-core',
     MultiJobResource = 'ps-multijob',
+}
+
+-- Jail resources are not standardized on ESX. Set the ESX event to the client
+-- event used by your jail resource. An empty value records the sentence and
+-- metadata but does not teleport the player.
+Config.JailEvents = {
+    qbx = 'police:client:SendToJail',
+    qb = 'police:client:SendToJail',
+    esx = '',
 }
 
 -- Officer Status (Map tab) ---------------------------------------------------

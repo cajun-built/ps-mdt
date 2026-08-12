@@ -15,3 +15,7 @@ end
 AddEventHandler('QBCore:Client:OnPlayerLoaded', function()
     local check = ps.callback('ps-mdt:hasProfile')
 end)
+
+AddEventHandler('esx:playerLoaded', function()
+    local check = ps.callback('ps-mdt:hasProfile')
+end)

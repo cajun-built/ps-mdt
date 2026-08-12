@@ -1,6 +1,4 @@
 local resourceName = tostring(GetCurrentResourceName())
-local ok, QBCore = pcall(function() return exports['qb-core']:GetCoreObject() end)
-if not ok then QBCore = nil end
 
 -- Send to Jail
 ps.registerCallback(resourceName .. ':server:sendToJail', function(source, payload)
@@ -33,22 +31,20 @@ ps.registerCallback(resourceName .. ':server:sendToJail', function(source, paylo
         return { success = false, message = 'Could not resolve player source' }
     end
 
-    local OtherPlayer = QBCore and QBCore.Functions.GetPlayer(targetSource)
-    if not OtherPlayer then
-        return { success = false, message = 'Could not find target player' }
-    end
-
     local currentDate = os.date('*t')
     if currentDate.day == 31 then
         currentDate.day = 30
     end
 
-    OtherPlayer.Functions.SetMetaData('injail', sentence)
-    OtherPlayer.Functions.SetMetaData('criminalrecord', {
+    SetCitizenMetadata(citizenId, 'injail', sentence)
+    SetCitizenMetadata(citizenId, 'criminalrecord', {
         ['hasRecord'] = true,
         ['date'] = currentDate
     })
-    TriggerClientEvent('police:client:SendToJail', targetSource, sentence)
+    local jailEvent = Config.JailEvents and Config.JailEvents[MDTFramework.name]
+    if jailEvent and jailEvent ~= '' then
+        TriggerClientEvent(jailEvent, targetSource, sentence)
+    end
     ps.notify(src, 'Sent to jail for ' .. sentence .. ' months', 'success')
 
     if ps.auditLog then

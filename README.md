@@ -30,6 +30,33 @@ ensure ps-mdt
 The compiled `web/dist` UI is tracked in this fork, so cloning it directly
 into your resources folder does not require Node.js or a frontend build.
 
+## ESX Legacy quick start
+
+This fork also supports current ESX Legacy. The same `ps_lib` and `ps-mdt`
+folders are used; do not rename them.
+
+1. Import `sql/qbx.sql` to install the shared MDT tables.
+2. Import `sql/esx.sql` into the same database to add the ESX compatibility
+   views and migrate ESX identifiers and vehicles.
+
+If `qbx.sql` was already imported into an ESX database, keep those MDT tables
+and import `esx.sql`; the ESX migration is designed to complete that partial
+installation.
+
+```cfg
+ensure oxmysql
+ensure ox_lib
+ensure es_extended
+ensure ps_lib
+ensure ps-mdt
+```
+
+Set `Config.Framework = 'auto'` (the default), or force `'esx'` if the
+server contains dormant resources from another framework. ESX jail resources
+do not share a standard event; set `Config.JailEvents.esx` in `config.lua`
+to the client event used by your jail resource. If you use `ox_inventory`,
+start it after `es_extended` and before `ps_lib`.
+
 ## What is this
 
 A full in-game law enforcement computer. Officers press F11 or type `/mdt` to open it. From there they can look up citizens, write reports, manage cases, track evidence, issue warrants, run BOLOs, look up vehicles and weapons, view security cameras and bodycam feeds, handle dispatch, and manage their department. Everything is permission-based so you control exactly what each rank has access to.
@@ -40,11 +67,11 @@ These need to be running on your server:
 
 | Resource | Why |
 |----------|-----|
-| [qbx_core](https://github.com/Qbox-project/qbx_core) | Qbox framework |
+| [qbx_core](https://github.com/Qbox-project/qbx_core) or [ESX Legacy](https://github.com/esx-framework/esx_core) | Supported framework |
 | [ps_lib](https://github.com/Project-Sloth/ps_lib) | Framework abstraction layer |
 | [oxmysql](https://github.com/overextended/oxmysql) | Database |
 | [ox_lib](https://github.com/overextended/ox_lib) | Utility library |
-| [ox_inventory](https://github.com/overextended/ox_inventory) | Qbox inventory integration |
+| [ox_inventory](https://github.com/overextended/ox_inventory) | Qbox inventory integration; optional on ESX |
 | [screenshot-basic](https://github.com/citizenfx/screenshot-basic) | Mugshot capture |
 
 

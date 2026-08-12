@@ -82,9 +82,7 @@ local zonePatrolNames = {}  -- [patrolId] = latest patrol name (read live by cal
 local myPatrolId      = nil -- patrol the local player currently belongs to
 
 local function getCitizenId()
-    if exports['qb-core'] then
-        return exports['qb-core']:GetCoreObject().Functions.GetPlayerData().citizenid
-    elseif ps and ps.getIdentifier then
+    if ps and ps.getIdentifier then
         return ps.getIdentifier()
     end
     return nil
@@ -352,6 +350,10 @@ end
 -- Fires when the player first spawns
 RegisterNetEvent('QBCore:Client:OnPlayerLoaded', function()
     -- Small delay so the framework has finished setting up the player
+    SetTimeout(2000, initZonesFromServer)
+end)
+
+RegisterNetEvent('esx:playerLoaded', function()
     SetTimeout(2000, initZonesFromServer)
 end)
 

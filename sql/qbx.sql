@@ -549,14 +549,27 @@ CREATE TABLE IF NOT EXISTS `mdt_audit_logs` (
   KEY `idx_entity_lookup` (`entity_type`, `entity_id`, `created_at`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
--- Extend player_vehicles with MDT fields (fresh install)
-ALTER TABLE `player_vehicles`
-  ADD COLUMN IF NOT EXISTS `mdt_vehicle_information` text CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci DEFAULT NULL,
-  ADD COLUMN IF NOT EXISTS `mdt_vehicle_points` int(11) NOT NULL DEFAULT 0,
-  ADD COLUMN IF NOT EXISTS `mdt_vehicle_status` varchar(500) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci NOT NULL DEFAULT 'valid',
-  ADD COLUMN IF NOT EXISTS `mdt_vehicle_stolen` tinyint(1) NOT NULL DEFAULT 0,
-  ADD COLUMN IF NOT EXISTS `mdt_vehicle_boloactive` tinyint(1) NOT NULL DEFAULT 0,
-  ADD COLUMN IF NOT EXISTS `mdt_vehicle_image` varchar(255) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci DEFAULT NULL;
+-- Extend Qbox/QBCore vehicles when that table exists. On ESX the common MDT
+-- schema is installed by this file and sql/esx.sql adds the equivalent columns
+-- to owned_vehicles.
+SET @ps_mdt_has_player_vehicles = (
+  SELECT COUNT(*) FROM information_schema.tables
+  WHERE table_schema = DATABASE() AND table_name = 'player_vehicles'
+);
+SET @ps_mdt_vehicle_alter = IF(
+  @ps_mdt_has_player_vehicles > 0,
+  'ALTER TABLE `player_vehicles`
+    ADD COLUMN IF NOT EXISTS `mdt_vehicle_information` text CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci DEFAULT NULL,
+    ADD COLUMN IF NOT EXISTS `mdt_vehicle_points` int(11) NOT NULL DEFAULT 0,
+    ADD COLUMN IF NOT EXISTS `mdt_vehicle_status` varchar(500) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci NOT NULL DEFAULT ''valid'',
+    ADD COLUMN IF NOT EXISTS `mdt_vehicle_stolen` tinyint(1) NOT NULL DEFAULT 0,
+    ADD COLUMN IF NOT EXISTS `mdt_vehicle_boloactive` tinyint(1) NOT NULL DEFAULT 0,
+    ADD COLUMN IF NOT EXISTS `mdt_vehicle_image` varchar(255) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci DEFAULT NULL',
+  'SELECT 1'
+);
+PREPARE ps_mdt_vehicle_stmt FROM @ps_mdt_vehicle_alter;
+EXECUTE ps_mdt_vehicle_stmt;
+DEALLOCATE PREPARE ps_mdt_vehicle_stmt;
 
 CREATE TABLE IF NOT EXISTS `mdt_weapons` (
   `id` int(10) unsigned NOT NULL AUTO_INCREMENT,

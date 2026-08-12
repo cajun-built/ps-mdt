@@ -1,4 +1,5 @@
 local function getCoreObject()
+    if MDTFramework and MDTFramework.is('esx') then return nil end
     local ok, core = pcall(function()
         return exports['qb-core']:GetCoreObject()
     end)
@@ -188,6 +189,10 @@ local function resolveRegistrationBatch(plates)
 end
 
 local function getVehicleShared(model)
+    if ps and ps.getSharedVehicle then
+        local vehicle = ps.getSharedVehicle(model)
+        if vehicle then return vehicle end
+    end
     if not Core or not Core.Shared or not Core.Shared.Vehicles then
         return nil
     end

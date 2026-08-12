@@ -608,7 +608,8 @@ ps.registerCallback(resourceName .. ':server:searchVehiclesForReport', function(
 
     local results = {}
     for _, row in ipairs(rows or {}) do
-        local vehicleData = vehicleShared and vehicleShared[row.vehicle] or nil
+        local vehicleData = (vehicleShared and vehicleShared[row.vehicle])
+            or (ps.getSharedVehicle and ps.getSharedVehicle(row.vehicle))
         table.insert(results, {
             plate = row.plate and string.upper(row.plate):gsub('%s+', '') or 'UNKNOWN',
             vehicle_label = vehicleData and vehicleData.name or row.vehicle or 'Unknown',

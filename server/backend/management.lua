@@ -37,8 +37,9 @@ end
 local function getPoliceJobDefinition(source)
     local jobName = resolvePoliceJobName(source)
 
-    if exports['qb-core'] then
-        local QBCore = exports['qb-core']:GetCoreObject()
+    if not (MDTFramework and MDTFramework.is('esx')) then
+        local ok, QBCore = pcall(function() return exports['qb-core']:GetCoreObject() end)
+        if not ok then QBCore = nil end
         local jobs = QBCore and QBCore.Shared and QBCore.Shared.Jobs
         if jobs and jobs[jobName] then
             return jobName, jobs[jobName]

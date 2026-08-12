@@ -19,7 +19,7 @@ end
 function NUIUpdateAuthWithData(jobData)
     local job = jobData or ps.getJob()
     local authorized, jobType = isAuthorizedJob(job)
-    local onDuty = job and job.onduty or false
+    local onDuty = job and (job.onduty == true or job.onDuty == true) or false
 
     SendNUI('updateAuth', {
         authorized = authorized and onDuty,

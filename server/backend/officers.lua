@@ -1,6 +1,4 @@
 local resourceName = tostring(GetCurrentResourceName())
-local ok, QBCore = pcall(function() return exports['qb-core']:GetCoreObject() end)
-if not ok then QBCore = nil end
  
 -- Get player source ID by citizenId
 ps.registerCallback(resourceName .. ':server:GetPlayerSourceId', function(source, targetCitizenId)
@@ -10,7 +8,7 @@ ps.registerCallback(resourceName .. ':server:GetPlayerSourceId', function(source
         ps.notify(source, 'Citizen seems asleep / missing', 'error')
         return nil
     end
-    return targetPlayer.source or targetPlayer.PlayerData.source
+    return targetPlayer.source or (targetPlayer.PlayerData and targetPlayer.PlayerData.source)
 end)
  
 -- Set Callsign
@@ -24,8 +22,6 @@ ps.registerCallback(resourceName .. ':server:setCallsign', function(source, payl
     if not cid or not newCallsign then
         return { success = false, message = 'Missing citizen ID or callsign' }
     end
-    if not QBCore then return { success = false, message = 'Core framework not available' } end
-
     -- Reject a callsign already owned by a different profile (UNIQUE index).
     local taken = MySQL.scalar.await(
         'SELECT 1 FROM mdt_profiles WHERE callsign = ? AND citizenid != ? LIMIT 1',
@@ -35,10 +31,12 @@ ps.registerCallback(resourceName .. ':server:setCallsign', function(source, payl
         return { success = false, message = 'Callsign "' .. tostring(newCallsign) .. '" is already in use' }
     end
 
-    local Player = QBCore.Functions.GetPlayerByCitizenId(cid)
-    if Player then
-        Player.Functions.SetMetaData('callsign', newCallsign)
-        TriggerClientEvent(resourceName .. ':client:updateCallsign', Player.PlayerData.source, newCallsign)
+    local targetSource = GetFrameworkPlayerSource(cid)
+    if targetSource then
+        if not SetCitizenMetadata(cid, 'callsign', newCallsign) then
+            return { success = false, message = 'Framework metadata update failed' }
+        end
+        TriggerClientEvent(resourceName .. ':client:updateCallsign', targetSource, newCallsign)
  
         MySQL.update.await('UPDATE mdt_profiles SET callsign = ? WHERE citizenid = ?', { newCallsign, cid })
  
@@ -56,10 +54,9 @@ ps.registerCallback(resourceName .. ':server:getCallsign', function(source, payl
     local cid = payload.citizenid
     if not cid then return { callsign = '' } end
  
-    if not QBCore then return { success = false, message = 'Core framework not available' } end
-    local Player = QBCore.Functions.GetPlayerByCitizenId(cid)
-    if Player then
-        return { callsign = tostring(Player.PlayerData.metadata.callsign or '') }
+    local targetSource = GetFrameworkPlayerSource(cid)
+    if targetSource then
+        return { callsign = tostring(ps.getMetadata(targetSource, 'callsign') or '') }
     end
     local row = MySQL.single.await('SELECT callsign FROM mdt_profiles WHERE citizenid = ?', { cid })
     return { callsign = tostring(row and row.callsign or '') }
@@ -78,17 +75,23 @@ ps.registerCallback(resourceName .. ':server:setRadio', function(source, payload
         return { success = false, message = 'Missing citizen ID or radio frequency' }
     end
  
-    if not QBCore then return { success = false, message = 'Core framework not available' } end
-    local targetPlayer = QBCore.Functions.GetPlayerByCitizenId(cid)
+    local targetPlayer = ps.getPlayerByIdentifier(cid)
     if not targetPlayer then
         return { success = false, message = 'Officer must be online' }
     end
  
-    local targetSource = targetPlayer.PlayerData.source
- 
-    local radio = targetPlayer.Functions.GetItemByName('radio')
-    if not radio then
-        return { success = false, message = targetPlayer.PlayerData.charinfo.firstname .. ' does not have a radio!' }
+    local targetSource = targetPlayer.source or (targetPlayer.PlayerData and targetPlayer.PlayerData.source)
+    local hasRadio = true
+    if GetResourceState('ox_inventory') == 'started' then
+        hasRadio = (exports.ox_inventory:Search(targetSource, 'count', 'radio') or 0) > 0
+    elseif targetPlayer.getInventoryItem then
+        local radio = targetPlayer.getInventoryItem('radio')
+        hasRadio = radio and (radio.count or 0) > 0
+    elseif targetPlayer.Functions and targetPlayer.Functions.GetItemByName then
+        hasRadio = targetPlayer.Functions.GetItemByName('radio') ~= nil
+    end
+    if not hasRadio then
+        return { success = false, message = (ps.getPlayerName(targetSource) or 'Officer') .. ' does not have a radio!' }
     end
  
     TriggerClientEvent(resourceName .. ':client:setRadio', targetSource, newRadio)
@@ -100,10 +103,9 @@ ps.registerCallback(resourceName .. ':server:getUnitLocation', function(source, 
     if not CheckAuth(source) then return {} end
     if not cid then return {} end
  
-    if not QBCore then return {} end
-    local Player = QBCore.Functions.GetPlayerByCitizenId(cid)
-    if Player then
-        local coords = GetEntityCoords(GetPlayerPed(Player.PlayerData.source))
+    local targetSource = GetFrameworkPlayerSource(cid)
+    if targetSource then
+        local coords = GetEntityCoords(GetPlayerPed(targetSource))
         return { x = coords.x, y = coords.y, z = coords.z }
     end
  

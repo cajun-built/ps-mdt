@@ -56,9 +56,9 @@ end
 local _qbCore
 local function getQBCore()
     if _qbCore then return _qbCore end
-    if exports['qb-core'] then
-        _qbCore = exports['qb-core']:GetCoreObject()
-    end
+    if MDTFramework and MDTFramework.is('esx') then return nil end
+    local ok, core = pcall(function() return exports['qb-core']:GetCoreObject() end)
+    if ok then _qbCore = core end
     return _qbCore
 end
 

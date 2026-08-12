@@ -307,6 +307,11 @@ local function setOfficerJob(targetSrc, jobName, grade)
         if ok and res ~= false then return true end
     end
 
+    if ps and ps.setJob then
+        local ok, result = pcall(ps.setJob, targetSrc, jobName, grade)
+        if ok and result ~= false then return true end
+    end
+
     local ok, QBCore = pcall(function() return exports['qb-core']:GetCoreObject() end)
     if ok and QBCore and QBCore.Functions then
         local Player = QBCore.Functions.GetPlayer(targetSrc)
@@ -451,21 +456,17 @@ ps.registerCallback('ps-mdt:server:updateOfficerCallsign', function(source, payl
         return { success = false, message = 'Missing citizen ID or callsign' }
     end
 
-    -- Use the existing setCallsign callback logic
-    local ok, QBCore = pcall(function() return exports['qb-core']:GetCoreObject() end)
-    if not ok or not QBCore then
-        return { success = false, message = 'Core framework not available' }
-    end
-
-    local Player = QBCore.Functions.GetPlayerByCitizenId(citizenid)
-    if not Player then
+    local targetSource = GetFrameworkPlayerSource(citizenid)
+    if not targetSource then
         return { success = false, message = 'Officer must be online to update callsign' }
     end
 
-    Player.Functions.SetMetaData('callsign', newCallsign)
+    if not SetCitizenMetadata(citizenid, 'callsign', newCallsign) then
+        return { success = false, message = 'Framework metadata update failed' }
+    end
 
     local resourceName = GetCurrentResourceName()
-    TriggerClientEvent(resourceName .. ':client:updateCallsign', Player.PlayerData.source, newCallsign)
+    TriggerClientEvent(resourceName .. ':client:updateCallsign', targetSource, newCallsign)
 
     MySQL.update.await('UPDATE mdt_profiles SET callsign = ? WHERE citizenid = ?', { newCallsign, citizenid })
 

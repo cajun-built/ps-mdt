@@ -66,26 +66,12 @@ local function collectCitizenFlags(citizenids)
 end
 
 local function getGender(gen)
-    if gen == 0 then
+    if gen == 0 or gen == '0' or gen == 'm' or gen == 'M' or gen == 'male' then
         return 'Male'
-    elseif gen == 1 then
+    elseif gen == 1 or gen == '1' or gen == 'f' or gen == 'F' or gen == 'female' then
         return 'Female'
     end
     return 'Unknown'
-end
-
--- SetMetaData only updates the player's IN-MEMORY metadata; the players row is
--- rewritten only on the next autosave/logout. To keep the DB consistent right
--- away (so MDT profile re-reads, which query the players table, reflect the
--- change immediately), eagerly persist the full live metadata after SetMetaData.
--- Because this snapshot is identical to what's in memory, the next autosave just
--- rewrites the same value -- there is no clobber.
-local function persistLiveMetadata(Player, citizenid)
-    if not (Player and Player.PlayerData and Player.PlayerData.metadata and citizenid) then return end
-    local ok, encoded = pcall(json.encode, Player.PlayerData.metadata)
-    if ok and encoded then
-        MySQL.update.await('UPDATE players SET metadata = ? WHERE citizenid = ?', { encoded, citizenid })
-    end
 end
 
 -- Safe query helper: returns empty table on error (handles missing tables gracefully)
@@ -197,7 +183,7 @@ ps.registerCallback(resourceName .. ':server:getCitizens', function(source, page
         v.cid = v.citizenid
         v.firstName = v.firstname
         v.lastName = v.lastname
-        v.gender = getGender(tonumber(v.gender))
+        v.gender = getGender(v.gender)
         v.dob = v.dateofbirth
         v.phone = v.phone
         v.image = profilePics[v.citizenid] or nil
@@ -347,7 +333,7 @@ ps.registerCallback(resourceName .. ':server:searchCitizens', function(source, q
         v.cid = v.citizenid
         v.firstName = v.firstname
         v.lastName = v.lastname
-        v.gender = getGender(tonumber(v.gender))
+        v.gender = getGender(v.gender)
         v.dob = v.dateofbirth
         v.phone = v.phone
         v.image = profilePics[v.citizenid] or nil
@@ -626,7 +612,7 @@ ps.registerCallback(resourceName .. ':server:getCitizenProfile', function(source
             .. randomChar() .. randomChar() .. randomChar() .. randomChar() .. '-'
             .. randomChar() .. randomChar() .. randomChar() .. randomChar()
         metadata.fingerprint = fingerprint
-        MySQL.update.await('UPDATE players SET metadata = ? WHERE citizenid = ?', { json.encode(metadata), citizenid })
+        UpdateCitizenMetadata(citizenid, metadata)
     end
 
     return {
@@ -635,7 +621,7 @@ ps.registerCallback(resourceName .. ':server:getCitizenProfile', function(source
             citizenid = citizenid,
             firstName = playerRow.firstname or 'Unknown',
             lastName = playerRow.lastname or 'Unknown',
-            gender = getGender(tonumber(playerRow.gender)),
+            gender = getGender(playerRow.gender),
             dob = playerRow.dateofbirth or 'N/A',
             phone = (GetCitizenPhoneNumber and GetCitizenPhoneNumber(citizenid, playerRow.phone)) or playerRow.phone or 'N/A',
             fingerprint = fingerprint,
@@ -762,18 +748,6 @@ ps.registerCallback(resourceName .. ':server:updateCitizenLicense', function(sou
     -- next flush (and live license checks read the stale in-memory copy), so the
     -- change appears to do nothing. Go through SetMetaData instead: it mutates the
     -- in-memory metadata AND persists it.
-    local Player = ps.getPlayerByIdentifier(citizenId)
-    if Player and Player.Functions and Player.Functions.SetMetaData then
-        local metadata = (Player.PlayerData and Player.PlayerData.metadata) or {}
-        metadata.licences = metadata.licences or {}
-        metadata.licences[licenseType] = enabled
-        Player.Functions.SetMetaData('licences', metadata.licences)
-        persistLiveMetadata(Player, citizenId)
-        return { success = true }
-    end
-
-    -- OFFLINE fallback: no in-memory state to conflict with, so a direct DB write
-    -- is safe and authoritative.
     local row = MySQL.single.await('SELECT metadata FROM players WHERE citizenid = ? LIMIT 1', { citizenId })
     if not row then
         return { success = false, message = 'Citizen not found' }
@@ -783,8 +757,9 @@ ps.registerCallback(resourceName .. ':server:updateCitizenLicense', function(sou
     metadata.licences = metadata.licences or {}
     metadata.licences[licenseType] = enabled
 
-    MySQL.update.await('UPDATE players SET metadata = ? WHERE citizenid = ?', { json.encode(metadata), citizenId })
-    return { success = true }
+    return {
+        success = SetCitizenMetadata(citizenId, 'licences', metadata.licences),
+    }
 end)
 
 ps.registerCallback(resourceName .. ':server:updateCitizenCustomLicense', function(source, payload)
@@ -869,31 +844,18 @@ ps.registerCallback(resourceName .. ':server:updateCitizenFingerprint', function
 
     -- Online: write through the live player object so the next autosave does not
     -- clobber it (same rationale as updateCitizenLicense).
-    local Player = ps.getPlayerByIdentifier(citizenid)
-    if Player and Player.Functions and Player.Functions.SetMetaData then
-        Player.Functions.SetMetaData('fingerprint', fingerprint or '')
-        persistLiveMetadata(Player, citizenid)
-        if ps.auditLog then
-            ps.auditLog(src, 'update_fingerprint', 'citizens', citizenid, { fingerprint = fingerprint })
-        end
-        return { success = true }
-    end
-
-    -- Offline fallback: direct DB write is safe.
     local row = MySQL.single.await('SELECT metadata FROM players WHERE citizenid = ? LIMIT 1', { citizenid })
     if not row then
         return { success = false, message = 'Citizen not found' }
     end
 
-    local metadata = row.metadata and json.decode(row.metadata) or {}
-    metadata.fingerprint = fingerprint or ''
-    MySQL.update.await('UPDATE players SET metadata = ? WHERE citizenid = ?', { json.encode(metadata), citizenid })
+    local success = SetCitizenMetadata(citizenid, 'fingerprint', fingerprint or '')
 
     if ps.auditLog then
         ps.auditLog(src, 'update_fingerprint', 'citizens', citizenid, { fingerprint = fingerprint })
     end
 
-    return { success = true }
+    return { success = success }
 end)
 
 -- Update citizen dna
@@ -905,30 +867,18 @@ ps.registerCallback(resourceName .. ':server:updateCitizenDNA', function(source,
         return { success = false, message = 'Missing citizen id' }
     end
 
-    local Player = ps.getPlayerByIdentifier(citizenid)
-    if Player and Player.Functions and Player.Functions.SetMetaData then
-        Player.Functions.SetMetaData('dna', dna or '')
-        persistLiveMetadata(Player, citizenid)
-        if ps.auditLog then
-            ps.auditLog(src, 'update_dna', 'citizens', citizenid, { dna = dna })
-        end
-        return { success = true }
-    end
-
     local row = MySQL.single.await('SELECT metadata FROM players WHERE citizenid = ? LIMIT 1', { citizenid })
     if not row then
         return { success = false, message = 'Citizen not found' }
     end
 
-    local metadata = row.metadata and json.decode(row.metadata) or {}
-    metadata.dna = dna or ''
-    MySQL.update.await('UPDATE players SET metadata = ? WHERE citizenid = ?', { json.encode(metadata), citizenid })
+    local success = SetCitizenMetadata(citizenid, 'dna', dna or '')
 
     if ps.auditLog then
         ps.auditLog(src, 'update_dna', 'citizens', citizenid, { dna = dna })
     end
 
-    return { success = true }
+    return { success = success }
 end)
 
 ps.registerCallback(resourceName .. ':server:createBolo', function(source, payload)
@@ -1268,7 +1218,7 @@ ps.registerCallback(resourceName .. ':server:getMyProfile', function(source)
             citizenid = citizenid,
             firstName = pPlayer.firstname or 'Unknown',
             lastName = pPlayer.lastname or 'Unknown',
-            gender = getGender(tonumber(pPlayer.gender)),
+            gender = getGender(pPlayer.gender),
             dob = pPlayer.dateofbirth or 'N/A',
             phone = (GetCitizenPhoneNumber and GetCitizenPhoneNumber(citizenid, pPlayer.phone)) or pPlayer.phone or 'N/A',
             fingerprint = fingerprint,
