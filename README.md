@@ -21,8 +21,8 @@ order:
 ```cfg
 ensure oxmysql
 ensure ox_lib
-ensure ox_inventory
 ensure qbx_core
+ensure ox_inventory
 ensure ps_lib
 ensure ps-mdt
 ```
@@ -135,8 +135,8 @@ npm run build
 ```
 ensure oxmysql
 ensure ox_lib
-ensure ox_inventory
 ensure qbx_core
+ensure ox_inventory
 ensure ps_lib
 ensure ps-mdt
 ```
