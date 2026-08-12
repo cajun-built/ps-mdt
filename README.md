@@ -39,9 +39,10 @@ folders are used; do not rename them.
 2. Import `sql/esx.sql` into the same database to add the ESX compatibility
    views and migrate ESX identifiers and vehicles.
 
-If `qbx.sql` was already imported into an ESX database, keep those MDT tables
-and import `esx.sql`; the ESX migration is designed to complete that partial
-installation.
+If an older `qbx.sql` import stopped with a missing `player_vehicles` error,
+pull the latest version and run the updated `qbx.sql` again before `esx.sql`.
+It is safe to rerun and will complete the shared MDT tables without requiring
+Qbox tables.
 
 ```cfg
 ensure oxmysql

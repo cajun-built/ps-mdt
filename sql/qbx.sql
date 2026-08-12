@@ -74,7 +74,7 @@ CREATE TABLE IF NOT EXISTS `mdt_permission_roles` (
   UNIQUE KEY `job_grade` (`job`,`grade`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
-INSERT INTO `mdt_penal_codes` (`code`, `label`, `charge_class`, `months`, `fine`, `color`, `description`) VALUES
+INSERT IGNORE INTO `mdt_penal_codes` (`code`, `label`, `charge_class`, `months`, `fine`, `color`, `description`) VALUES
 ('P.C. 1001','Simple Assault','misdemeanor',7,500,'green','When a person intentionally or knowingly causes physical contact with another (without a weapon)'),
 ('P.C. 1002','Assault','misdemeanor',15,850,'orange','If a person intentionally or knowingly causes injury to another (without a weapon)'),
 ('P.C. 1003','Aggravated Assault','felony',20,1250,'orange','When a person unintentionally, and recklessly causes bodily injury to another as a result of a confrontation AND causes bodily injury'),
@@ -706,6 +706,7 @@ CREATE TABLE IF NOT EXISTS `mdt_impound` (
   CONSTRAINT `FK_mdt_impound_reports` FOREIGN KEY (`linkedreport`) REFERENCES `mdt_reports` (`id`) ON DELETE SET NULL ON UPDATE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
 
+DROP TRIGGER IF EXISTS `mdt_reports_charges_after_delete`;
 SET @OLDTMP_SQL_MODE=@@SQL_MODE, SQL_MODE='STRICT_TRANS_TABLES,ERROR_FOR_DIVISION_BY_ZERO,NO_AUTO_CREATE_USER,NO_ENGINE_SUBSTITUTION';
 DELIMITER //
 CREATE TRIGGER `mdt_reports_charges_after_delete` AFTER UPDATE ON `mdt_reports_charges` FOR EACH ROW BEGIN
@@ -737,6 +738,7 @@ END//
 DELIMITER ;
 SET SQL_MODE=@OLDTMP_SQL_MODE;
 
+DROP TRIGGER IF EXISTS `mdt_reports_charges_after_insert`;
 SET @OLDTMP_SQL_MODE=@@SQL_MODE, SQL_MODE='STRICT_TRANS_TABLES,ERROR_FOR_DIVISION_BY_ZERO,NO_AUTO_CREATE_USER,NO_ENGINE_SUBSTITUTION';
 DELIMITER //
 CREATE TRIGGER `mdt_reports_charges_after_insert` AFTER INSERT ON `mdt_reports_charges` FOR EACH ROW BEGIN
