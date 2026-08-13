@@ -47,9 +47,21 @@ ps.registerCallback(resourceName .. ':server:getCallResponses', function(source,
     if not CheckAuth(source) then return {} end
 
     if GetResourceState('ps-dispatch') == 'started' then
+        local ok, call = pcall(function()
+            return exports['ps-dispatch']:GetDispatchCallById(callid)
+        end)
+        if ok and call then
+            return call.responses or {}
+        end
+
+        -- Compatibility with older ps-dispatch versions that only expose the
+        -- full list. Call ids are not guaranteed to match Lua array indexes
+        -- after calls expire or are cleared, so search by the stored id.
         local calls = exports['ps-dispatch']:GetDispatchCalls()
-        if calls and calls[callid] and calls[callid]['responses'] then
-            return calls[callid]['responses']
+        for i = 1, #(calls or {}) do
+            if tostring(calls[i].id) == tostring(callid) then
+                return calls[i].responses or {}
+            end
         end
     end
 
@@ -73,14 +85,17 @@ ps.registerCallback(resourceName .. ':server:sendCallResponse', function(source,
     local name = ps.getPlayerName(src) or 'Unknown'
 
     if GetResourceState('ps-dispatch') == 'started' then
+        local accepted = false
         TriggerEvent('dispatch:sendCallResponse', src, callid, message, time, function(isGood)
+            accepted = isGood == true
             if isGood then
                 TriggerClientEvent(resourceName .. ':client:callResponse', -1, message, time, callid, name)
             end
         end)
+        return { success = accepted }
     end
 
-    return { success = true }
+    return { success = false }
 end)
 
 -- Signal 100 (Panic / Emergency)
