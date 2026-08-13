@@ -56,7 +56,9 @@ function GetActiveWarrantsData(src)
             JSON_UNQUOTE(JSON_EXTRACT(p.charinfo, '$.firstname')) AS firstname,
             JSON_UNQUOTE(JSON_EXTRACT(p.charinfo, '$.lastname')) AS lastname
         FROM mdt_reports_warrants w
-        LEFT JOIN players p ON p.citizenid COLLATE utf8mb4_general_ci = w.citizenid COLLATE utf8mb4_general_ci
+        LEFT JOIN players p
+            ON CONVERT(p.citizenid USING utf8mb4) COLLATE utf8mb4_unicode_ci
+             = CONVERT(w.citizenid USING utf8mb4) COLLATE utf8mb4_unicode_ci
         WHERE w.expirydate >= NOW()
         ORDER BY w.expirydate ASC
     ]])

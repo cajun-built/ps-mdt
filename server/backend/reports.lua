@@ -392,8 +392,10 @@ ps.registerCallback(resourceName..':server:getReport', function(source, reportid
                     mp.profilepicture as image,
                     JSON_UNQUOTE(JSON_EXTRACT(p.metadata, '$.fingerprint')) as fingerprint
                 FROM players p
-                LEFT JOIN mdt_profiles mp ON mp.citizenid COLLATE utf8mb4_general_ci = p.citizenid COLLATE utf8mb4_general_ci
-                WHERE p.citizenid COLLATE utf8mb4_general_ci IN (%s)
+                LEFT JOIN mdt_profiles mp
+                    ON CONVERT(mp.citizenid USING utf8mb4) COLLATE utf8mb4_unicode_ci
+                     = CONVERT(p.citizenid USING utf8mb4) COLLATE utf8mb4_unicode_ci
+                WHERE CONVERT(p.citizenid USING utf8mb4) COLLATE utf8mb4_unicode_ci IN (%s)
             ]]):format(placeholders)
 
             local lookupRows = MySQL.query.await(lookupQuery, cidList)

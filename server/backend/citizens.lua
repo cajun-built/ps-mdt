@@ -1101,8 +1101,12 @@ ps.registerCallback(resourceName .. ':server:getMyProfile', function(source)
             JSON_UNQUOTE(JSON_EXTRACT(p.charinfo, '$.birthdate')) AS dateofbirth,
             JSON_UNQUOTE(JSON_EXTRACT(p.charinfo, '$.phone')) AS phone,
             p.metadata,
-            (SELECT COUNT(*) FROM mdt_reports_charges WHERE citizenid COLLATE utf8mb4_general_ci = p.citizenid) AS arrests,
-            (SELECT COUNT(*) FROM player_vehicles WHERE citizenid COLLATE utf8mb4_general_ci = p.citizenid) AS vehicle_count
+            (SELECT COUNT(*) FROM mdt_reports_charges
+                WHERE CONVERT(citizenid USING utf8mb4) COLLATE utf8mb4_unicode_ci
+                    = CONVERT(p.citizenid USING utf8mb4) COLLATE utf8mb4_unicode_ci) AS arrests,
+            (SELECT COUNT(*) FROM player_vehicles
+                WHERE CONVERT(citizenid USING utf8mb4) COLLATE utf8mb4_unicode_ci
+                    = CONVERT(p.citizenid USING utf8mb4) COLLATE utf8mb4_unicode_ci) AS vehicle_count
         FROM players p WHERE p.citizenid = ? LIMIT 1
     ]], { citizenid })
 

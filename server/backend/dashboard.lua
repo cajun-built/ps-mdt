@@ -620,6 +620,16 @@ ps.registerCallback(resourceName .. ':server:getUsageMetrics', function(source)
     return computeUsageMetrics()
 end)
 
+local function safeDashboardCompute(widget, fallback, compute)
+    local ok, result = pcall(compute)
+    if not ok then
+        print(('[ps-mdt] Dashboard widget "%s" failed: %s'):format(widget, tostring(result)))
+        return fallback
+    end
+    if result == nil then return fallback end
+    return result
+end
+
 -- ============================================================================
 --  Aggregate: one round-trip for the whole dashboard.
 --  The frontend previously fired ~9 separate NUI callbacks on open (one per
@@ -630,21 +640,41 @@ end)
 ps.registerCallback(resourceName .. ':server:getDashboard', function(source)
     local src = source
     if not CheckAuth(src) then return {} end
+
+    -- Keep one broken/optional widget from preventing the entire dashboard
+    -- response. Without this guard, the NUI remains on its "Loading..."
+    -- placeholders whenever any single SQL query throws.
     return {
-        jobData          = computeJobData(src),
-        upcomingHearings = computeUpcomingHearings(src),
-        openCases        = computeOpenCases(),
-        reportStatistics = computeReportStatistics(),
-        timeStatistics   = computeTimeStatistics(src),
-        activeWarrants   = (GetActiveWarrantsData and GetActiveWarrantsData(src)) or {},
-        bulletins        = computeBulletins(),
-        activeBolos      = computeActiveBolos(src),
-        activeUnits      = computeActiveUnits(),
+        jobData = safeDashboardCompute('jobData', { rank = 'Officer', payRate = '$0/hr' }, function()
+            return computeJobData(src)
+        end),
+        upcomingHearings = safeDashboardCompute('upcomingHearings', {}, function()
+            return computeUpcomingHearings(src)
+        end),
+        openCases = safeDashboardCompute('openCases', {}, computeOpenCases),
+        reportStatistics = safeDashboardCompute('reportStatistics', {
+            totalThisWeek = 0,
+            changeFromLastWeek = 0,
+        }, computeReportStatistics),
+        timeStatistics = safeDashboardCompute('timeStatistics', {}, function()
+            return computeTimeStatistics(src)
+        end),
+        activeWarrants = safeDashboardCompute('activeWarrants', {}, function()
+            return (GetActiveWarrantsData and GetActiveWarrantsData(src)) or {}
+        end),
+        bulletins = safeDashboardCompute('bulletins', {
+            { content = 'No bulletins found..' },
+        }, computeBulletins),
+        activeBolos = safeDashboardCompute('activeBolos', {}, function()
+            return computeActiveBolos(src)
+        end),
+        activeUnits = safeDashboardCompute('activeUnits', { count = 0 }, computeActiveUnits),
         -- The frontend already reads usageMetrics off this payload but the server
         -- never sent it, so the numbers (and the impound tile) stayed empty.
-        usageMetrics     = computeUsageMetrics(),
-        recentDispatches = computeRecentDispatches(src),
-        usageMetrics     = computeUsageMetrics(),
+        usageMetrics = safeDashboardCompute('usageMetrics', {}, computeUsageMetrics),
+        recentDispatches = safeDashboardCompute('recentDispatches', {}, function()
+            return computeRecentDispatches(src)
+        end),
     }
 end)
 -- Human-readable description of a call for audit labels, e.g. "10-71 (Shooting)"
