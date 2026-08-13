@@ -246,7 +246,6 @@ export const DATE_FORMAT_OPTIONS: Intl.DateTimeFormatOptions = {
 /** UI timing constants (ms) */
 export const TIMING = {
 	timeUpdateInterval: 1000,
-	topBarOpacityDelay: 100,
 	offDutyLoadingDuration: 2000,
 } as const;
 

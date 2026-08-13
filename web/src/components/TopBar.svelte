@@ -15,46 +15,12 @@
 
 	interface Props {
 		authService: AuthService;
-		onOpacityStyleChange: (opacityStyle: string) => void;
 	}
 
-	let { authService, onOpacityStyleChange }: Props = $props();
+	let { authService }: Props = $props();
 
 	let currentTime = $state(DEFAULT_TIME);
 	let currentDate = $state(DEFAULT_DATE);
-	let opacityTimeout: ReturnType<typeof setTimeout> | null = $state(null);
-	let documentOpacity = $state(1);
-
-	/**
-	 * Reactive statement for the opacity style string.
-	 */
-	const opacityStyle = $derived(`opacity: ${documentOpacity}`);
-
-	/**
-	 * Watch for opacity style changes and notify parent.
-	 */
-	$effect(() => {
-		onOpacityStyleChange(opacityStyle);
-	});
-
-	function handleTopBarEnter() {
-		if (opacityTimeout) {
-			clearTimeout(opacityTimeout);
-			opacityTimeout = null;
-		}
-		documentOpacity = 0.25;
-	}
-
-	function handleTopBarLeave() {
-		if (opacityTimeout) {
-			clearTimeout(opacityTimeout);
-		}
-
-		opacityTimeout = setTimeout(() => {
-			documentOpacity = 1;
-			opacityTimeout = null;
-		}, TIMING.topBarOpacityDelay);
-	}
 
 	/**
 	 * Initializes the time update interval and cleans up on component destruction.
@@ -68,19 +34,11 @@
 
 		return () => {
 			clearInterval(timeInterval);
-			if (opacityTimeout) {
-				clearTimeout(opacityTimeout);
-			}
 		};
 	});
 </script>
 
-<div
-	class="top-bar"
-	role="region"
-	onmouseenter={handleTopBarEnter}
-	onmouseleave={handleTopBarLeave}
->
+<div class="top-bar" role="region">
 	<div class="user-info">
 		{#if authService.isAuthorized}
 			{authService.playerInfo().rank}

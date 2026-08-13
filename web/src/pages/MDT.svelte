@@ -20,12 +20,6 @@
     const tabService = createTabService();
     const instanceStateService = createInstanceStateService(tabService);
 
-    let opacityStyle = $state("opacity: 1");
-
-    function handleOpacityStyleChange(style: string): void {
-        opacityStyle = style;
-    }
-
     onMount(() => {
         authService.checkAuth();
         settingsService.loadColorConfig();
@@ -135,12 +129,9 @@
 
 <main class="mdt-container" data-job-type={authService.jobType}>
     <RadioPTT />
-    <div class="mdt-window" style={opacityStyle}>
+    <div class="mdt-window">
         <div class="mdt-interface">
-            <TopBar
-                    {authService}
-                    onOpacityStyleChange={handleOpacityStyleChange}
-            />
+            <TopBar {authService} />
 
             <div class="mdt-content">
                 {#if !authService.isCivilian}
@@ -189,8 +180,7 @@
         box-shadow: 0 20px 40px rgba(23, 23, 23, 0.3);
         border: 1px solid transparent;
         position: relative;
-        transition: opacity 0.2s ease-in-out;
-        will-change: opacity;
+        opacity: 1;
     }
 
     :global([data-job-type="ems"]) .mdt-window {
