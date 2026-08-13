@@ -44,6 +44,11 @@ pull the latest version and run the updated `qbx.sql` again before `esx.sql`.
 It is safe to rerun and will complete the shared MDT tables without requiring
 Qbox tables.
 
+If an older `esx.sql` stopped with MariaDB error 1833 while changing
+`mdt_profiles.citizenid`, pull the latest version and rerun only `esx.sql`.
+The migration temporarily removes and restores the affected foreign keys and
+is safe to rerun. Stop `ps-mdt` while applying database migrations.
+
 ```cfg
 ensure oxmysql
 ensure ox_lib

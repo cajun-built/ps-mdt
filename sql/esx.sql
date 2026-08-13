@@ -25,7 +25,22 @@ ALTER TABLE `users`
 
 -- ESX multicharacter identifiers can exceed the 50-character Qbox citizen ID
 -- size. Keep every identity-bearing MDT column wide enough for char#:license:...
-SET FOREIGN_KEY_CHECKS = 0;
+-- MariaDB does not allow either side of a foreign key to be modified while
+-- the constraint exists, even when FOREIGN_KEY_CHECKS is disabled. Drop only
+-- the six profile/citizen constraints here and restore them below. IF EXISTS
+-- makes this block safe to rerun after a partially completed migration.
+ALTER TABLE `mdt_messages`
+  DROP FOREIGN KEY IF EXISTS `FK_mdt_messages_sender`,
+  DROP FOREIGN KEY IF EXISTS `FK_mdt_messages_receiver`;
+ALTER TABLE `mdt_reports_warrants`
+  DROP FOREIGN KEY IF EXISTS `FK_mdt_reports_warrants_mdt_profiles`;
+ALTER TABLE `mdt_arrests`
+  DROP FOREIGN KEY IF EXISTS `FK_mdt_arrests_profiles`;
+ALTER TABLE `mdt_case_officers`
+  DROP FOREIGN KEY IF EXISTS `FK_mdt_case_officers_profiles`;
+ALTER TABLE `mdt_weapons`
+  DROP FOREIGN KEY IF EXISTS `FK_mdt_weapons_mdt_profiles`;
+
 ALTER TABLE `mdt_profiles` MODIFY `citizenid` varchar(80) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci NOT NULL;
 ALTER TABLE `mdt_messages`
   MODIFY `sender_citizenid` varchar(80) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci NOT NULL,
@@ -70,7 +85,18 @@ ALTER TABLE `mdt_warrant_requests`
   MODIFY `reviewer_citizenid` varchar(80) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci DEFAULT NULL;
 ALTER TABLE `mdt_warrant_reviews` MODIFY `reviewer_citizenid` varchar(80) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci NOT NULL;
 ALTER TABLE `mdt_court_attendees` MODIFY `citizenid` varchar(80) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci NOT NULL;
-SET FOREIGN_KEY_CHECKS = 1;
+
+ALTER TABLE `mdt_messages`
+  ADD CONSTRAINT `FK_mdt_messages_sender` FOREIGN KEY (`sender_citizenid`) REFERENCES `mdt_profiles` (`citizenid`) ON DELETE CASCADE ON UPDATE CASCADE,
+  ADD CONSTRAINT `FK_mdt_messages_receiver` FOREIGN KEY (`receiver_citizenid`) REFERENCES `mdt_profiles` (`citizenid`) ON DELETE CASCADE ON UPDATE CASCADE;
+ALTER TABLE `mdt_reports_warrants`
+  ADD CONSTRAINT `FK_mdt_reports_warrants_mdt_profiles` FOREIGN KEY (`citizenid`) REFERENCES `mdt_profiles` (`citizenid`) ON DELETE CASCADE ON UPDATE CASCADE;
+ALTER TABLE `mdt_arrests`
+  ADD CONSTRAINT `FK_mdt_arrests_profiles` FOREIGN KEY (`citizenid`) REFERENCES `mdt_profiles` (`citizenid`) ON DELETE CASCADE ON UPDATE CASCADE;
+ALTER TABLE `mdt_case_officers`
+  ADD CONSTRAINT `FK_mdt_case_officers_profiles` FOREIGN KEY (`citizenid`) REFERENCES `mdt_profiles` (`citizenid`) ON DELETE CASCADE ON UPDATE CASCADE;
+ALTER TABLE `mdt_weapons`
+  ADD CONSTRAINT `FK_mdt_weapons_mdt_profiles` FOREIGN KEY (`owner`) REFERENCES `mdt_profiles` (`citizenid`) ON DELETE NO ACTION ON UPDATE CASCADE;
 
 CREATE OR REPLACE VIEW `players` AS
 SELECT
