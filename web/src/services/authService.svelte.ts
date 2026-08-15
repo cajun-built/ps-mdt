@@ -363,7 +363,6 @@ export interface AuthService {
 	// Actions
 	updateAuthState: (data: AuthUpdateData) => void;
 	checkAuth: () => Promise<void>;
-	handleAuthComplete: () => void;
 	goOnDuty: () => Promise<void>;
 	signOut: () => void;
 	closeUI: () => void;

@@ -10,7 +10,6 @@
 	} from "../constants";
 	import { formatTime, formatDate } from "../utils/datetime";
 
-	let info = $derived(APP_INFO[authService.jobType] || APP_INFO.leo);
 	import type { AuthService } from "../services/authService.svelte";
 
 	interface Props {
@@ -18,6 +17,7 @@
 	}
 
 	let { authService }: Props = $props();
+	let info = $derived(APP_INFO[authService.jobType === "civilian" ? "leo" : authService.jobType] || APP_INFO.leo);
 
 	let currentTime = $state(DEFAULT_TIME);
 	let currentDate = $state(DEFAULT_DATE);
@@ -39,31 +39,42 @@
 </script>
 
 <div class="top-bar" role="region">
-	<div class="user-info">
+	<div class="terminal-context">
 		{#if authService.isAuthorized}
-			{authService.playerInfo().rank}
-			{authService.playerInfo().firstName}
-			{authService.playerInfo().lastName} | {authService.playerInfo().id} |
-			{authService.playerInfo().department}
+			<span class="context-icon material-icons">shield</span>
+			<div class="context-copy">
+				<span class="context-department">{authService.playerInfo().department}</span>
+				<span class="context-officer">{authService.playerInfo().rank} {authService.playerInfo().firstName} {authService.playerInfo().lastName}</span>
+			</div>
 		{:else}
-			{info.title} - {info.subtitle}
+			<span class="context-department">{info.title}</span>
 		{/if}
 	</div>
-	<div class="time-info">
-		{currentTime} | {currentDate}
+	<div class="utility-info">
+		{#if authService.isAuthorized}
+			<div class="utility-cell">
+				<span class="utility-label">Callsign</span>
+				<span class="utility-value accent">{authService.playerInfo().id || "Not set"}</span>
+			</div>
+			<div class="utility-separator"></div>
+		{/if}
+		<div class="utility-cell time-cell">
+			<span class="utility-label">{currentDate}</span>
+			<span class="utility-value">{currentTime}</span>
+		</div>
 	</div>
 </div>
 
 <style>
 	.top-bar {
-		background: rgba(13, 13, 13, 0.7);
-		min-height: 55px;
+		background: #0c1117;
+		min-height: 46px;
 		display: flex;
 		justify-content: space-between;
 		align-items: center;
-		padding: 0 20px;
+		padding: 0 18px;
 		color: var(--primary-text);
-		font-size: 14px;
+		font-size: 12px;
 		font-weight: 500;
 		border-bottom: 1px solid var(--border-primary);
 		z-index: 10;
@@ -81,8 +92,48 @@
 		border-bottom-color: rgba(180, 150, 60, 0.12);
 	}
 
-	.user-info,
-	.time-info {
-		color: var(--primary-text);
+	.terminal-context,
+	.utility-info {
+		display: flex;
+		align-items: center;
+	}
+
+	.context-icon {
+		font-size: 18px;
+		color: rgba(var(--accent-text-rgb), 0.72);
+		margin-right: 8px;
+	}
+
+	.context-copy,
+	.utility-cell {
+		display: flex;
+		flex-direction: column;
+	}
+
+	.context-department {
+		color: rgba(255, 255, 255, 0.76);
+		font-size: 10px;
+		font-weight: 650;
+		line-height: 1.2;
+	}
+
+	.context-officer,
+	.utility-label {
+		color: rgba(255, 255, 255, 0.32);
+		font-size: 8px;
+		line-height: 1.35;
+		text-transform: uppercase;
+		letter-spacing: 0.55px;
+	}
+
+	.utility-info { gap: 12px; }
+	.utility-separator { width: 1px; height: 23px; background: rgba(255, 255, 255, 0.07); }
+	.utility-value { color: rgba(255, 255, 255, 0.82); font-size: 10px; font-weight: 650; line-height: 1.25; }
+	.utility-value.accent { color: rgba(var(--accent-text-rgb), 0.88); }
+	.time-cell { text-align: right; }
+	.time-cell .utility-label { text-transform: none; }
+
+	@media (max-width: 1050px) {
+		.context-officer { display: none; }
 	}
 </style>

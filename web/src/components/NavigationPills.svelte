@@ -3,14 +3,24 @@
 	import type { createTabService } from "../services/tabService.svelte";
 	import type { JobType } from "../interfaces/IUser";
 	import type { AuthService } from "../services/authService.svelte";
+	import DepartmentLogo from "./DepartmentLogo.svelte";
+	import { resolveDepartmentBrand, type DepartmentBrand } from "../utils/departmentBranding";
 
 	interface Props {
 		tabService: ReturnType<typeof createTabService>;
 		jobType?: JobType;
 		authService?: AuthService;
+		brand?: DepartmentBrand;
 	}
 
-	let { tabService, jobType = 'leo', authService }: Props = $props();
+	let { tabService, jobType = 'leo', authService, brand }: Props = $props();
+
+	let activeBrand = $derived(brand || resolveDepartmentBrand(
+		authService?.playerData?.job?.name,
+		authService?.playerData?.job?.label,
+		jobType,
+	));
+	let officer = $derived(authService?.playerInfo?.());
 
 	function isTabHidden(tabName: string): boolean {
 		if (!authService) return false;
@@ -18,8 +28,9 @@
 		return authService.hasRawPermission(key);
 	}
 
-	let visibleTabs = $derived(getTabsForJob(jobType).filter(t => !isTabHidden(t.name)));
-	let visibleTabNames = $derived(new Set(visibleTabs.map(t => t.name)));
+	let navigationJobType = $derived(jobType === "civilian" ? "leo" : jobType);
+	let visibleTabs = $derived(getTabsForJob(navigationJobType).filter(t => !isTabHidden(t.name)));
+	let visibleTabNames = $derived(new Set<string>(visibleTabs.map(t => t.name)));
 
 	let collapsed = $state(false);
 	let collapsedGroups = $state<Record<string, boolean>>({});
@@ -81,6 +92,29 @@
 </script>
 
 <div class="nav-pills" class:collapsed>
+	<div class="brand-block">
+		<DepartmentLogo brand={activeBrand} size={collapsed ? 38 : 58} />
+		{#if !collapsed}
+			<div class="brand-name">{activeBrand.name}</div>
+			<div class="brand-terminal">Mobile Data Terminal</div>
+		{/if}
+	</div>
+
+	{#if authService && !collapsed}
+		<div class="officer-card">
+			<div class="officer-avatar"><span class="material-icons">account_circle</span></div>
+			<div class="officer-copy">
+				<span class="officer-name">{officer?.rank} {officer?.firstName} {officer?.lastName}</span>
+				<span class="officer-id">{officer?.id || "No callsign"}</span>
+				<span class="duty-state" class:on-duty={authService.onDuty}>
+					<span class="duty-dot"></span>{authService.onDuty ? "On duty" : "Off duty"}
+				</span>
+			</div>
+		</div>
+	{/if}
+
+	<div class="navigation-divider"></div>
+
 	{#each visibleGroups as group}
 		{#if group.label && !collapsed}
 			<!-- Collapsible group with header -->
@@ -148,7 +182,94 @@
 		overflow-y: auto;
 		overflow-x: hidden;
 		scrollbar-width: none;
-		padding-top: 2px;
+		padding: 0 8px;
+		width: 100%;
+	}
+
+	.brand-block {
+		display: flex;
+		flex-direction: column;
+		align-items: center;
+		gap: 4px;
+		padding: 10px 8px 7px;
+		text-align: center;
+		flex-shrink: 0;
+	}
+
+	.brand-name {
+		max-width: 172px;
+		color: rgba(255, 255, 255, 0.88);
+		font-size: 12px;
+		font-weight: 650;
+		line-height: 1.25;
+	}
+
+	.brand-terminal {
+		color: rgba(var(--accent-text-rgb), 0.55);
+		font-size: 8px;
+		font-weight: 700;
+		letter-spacing: 0.85px;
+		text-transform: uppercase;
+	}
+
+	.officer-card {
+		display: flex;
+		align-items: center;
+		gap: 9px;
+		margin: 0 2px 6px;
+		padding: 7px 8px;
+		background: rgba(255, 255, 255, 0.025);
+		border: 1px solid rgba(255, 255, 255, 0.065);
+		border-radius: 7px;
+		flex-shrink: 0;
+	}
+
+	.officer-avatar {
+		width: 30px;
+		height: 30px;
+		display: grid;
+		place-items: center;
+		color: rgba(255, 255, 255, 0.55);
+	}
+
+	.officer-avatar .material-icons { font-size: 30px; }
+
+	.officer-copy {
+		display: flex;
+		flex-direction: column;
+		min-width: 0;
+		line-height: 1.25;
+	}
+
+	.officer-name {
+		color: rgba(255, 255, 255, 0.87);
+		font-size: 10px;
+		font-weight: 650;
+		white-space: nowrap;
+		overflow: hidden;
+		text-overflow: ellipsis;
+	}
+
+	.officer-id { color: rgba(255, 255, 255, 0.38); font-size: 9px; }
+	.duty-state {
+		display: flex;
+		align-items: center;
+		gap: 4px;
+		margin-top: 3px;
+		color: rgba(248, 113, 113, 0.8);
+		font-size: 8px;
+		font-weight: 750;
+		letter-spacing: 0.45px;
+		text-transform: uppercase;
+	}
+	.duty-state.on-duty { color: rgba(74, 222, 128, 0.85); }
+	.duty-dot { width: 5px; height: 5px; border-radius: 50%; background: currentColor; }
+
+	.navigation-divider {
+		height: 1px;
+		background: rgba(255, 255, 255, 0.055);
+		margin: 0 4px 4px;
+		flex-shrink: 0;
 	}
 
 	.nav-pills::-webkit-scrollbar {
@@ -156,13 +277,14 @@
 	}
 
 	.nav-pill {
-		padding: 10px 24px;
+		padding: 4px 9px;
 		width: 100%;
-		font-size: 13px;
+		font-size: 11px;
 		cursor: pointer;
 		transition: all 0.15s ease;
 		flex-shrink: 0;
-		gap: 8px;
+		gap: 9px;
+		border-radius: 4px;
 		text-align: left;
 		display: flex;
 		align-items: center;
@@ -172,12 +294,12 @@
 	}
 
 	.nav-pill.grouped {
-		padding-left: 38px;
-		font-size: 12px;
+		padding-left: 16px;
+		font-size: 10.5px;
 	}
 
 	.nav-icon {
-		font-size: 20px;
+		font-size: 16px;
 		flex-shrink: 0;
 	}
 
@@ -186,8 +308,9 @@
 	}
 
 	.nav-pill.active {
-		background: var(--btn-secondary-active);
-		color: var(--primary-text);
+		background: rgba(var(--accent-rgb), 0.16);
+		color: rgba(var(--accent-text-rgb), 0.96);
+		box-shadow: inset 2px 0 0 rgba(var(--accent-rgb), 0.9);
 	}
 
 	.nav-pill.active:hover {
@@ -232,12 +355,12 @@
 		display: flex;
 		align-items: center;
 		gap: 6px;
-		padding: 8px 16px;
-		margin: 4px 8px 0;
+		padding: 4px 8px 2px;
+		margin: 2px 2px 0;
 		background: none;
 		border: none;
 		color: rgba(255, 255, 255, 0.3);
-		font-size: 9px;
+		font-size: 8px;
 		font-weight: 700;
 		text-transform: uppercase;
 		letter-spacing: 0.8px;
@@ -279,6 +402,6 @@
 	/* ===== COLLAPSE BUTTON ===== */
 	.collapse-button {
 		margin-top: auto;
-		margin-bottom: 16px;
+		margin-bottom: 8px;
 	}
 </style>

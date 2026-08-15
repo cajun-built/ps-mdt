@@ -9,6 +9,7 @@
 	import PlaceholderContent from "./PlaceholderContent.svelte";
 	import CivilianView from "../pages/CivilianView.svelte";
 	import Dashboard from "../pages/Dashboard.svelte";
+	import CommandDashboard from "../pages/CommandDashboard.svelte";
 	import Reports from "../pages/Reports.svelte";
 	import Warrants from "../pages/Warrants.svelte";
 	import Charges from "../pages/Charges.svelte";
@@ -46,7 +47,7 @@
 
 	let { authService, tabService, instanceStateService }: Props = $props();
 
-	let contentZoom = $state("130%");
+	let contentZoom = $state("100%");
 	let sopAgreed = $state(false);
 	let sopChecked = $state(false);
 	let sopIntroduction = $state("");
@@ -189,6 +190,12 @@
 					</button>
 				</div>
 			</div>
+		{:else if activeComponent === "dashboard" && authService.jobType === "leo"}
+			<CommandDashboard
+				signOut={authService.signOut}
+				playerData={authService.playerData}
+				{tabService}
+			/>
 		{:else if activeComponent === "dashboard"}
 			<Dashboard
 				signOut={authService.signOut}

@@ -14,11 +14,19 @@
     import InstanceTabs from "../components/InstanceTabs.svelte";
     import ContentArea from "../components/ContentArea.svelte";
     import RadioPTT from "../components/RadioPTT.svelte";
+    import {resolveDepartmentBrand} from "../utils/departmentBranding";
     import type {AuthUpdateData} from "@/interfaces/IUser";
 
     const authService = createAuthService();
     const tabService = createTabService();
     const instanceStateService = createInstanceStateService(tabService);
+
+    let departmentBrand = $derived(resolveDepartmentBrand(
+        authService.playerData?.job?.name,
+        authService.playerData?.job?.label,
+        authService.jobType,
+    ));
+    let activeComponent = $derived(tabService.getActiveComponent());
 
     onMount(() => {
         authService.checkAuth();
@@ -127,23 +135,29 @@
     }
 </script>
 
-<main class="mdt-container" data-job-type={authService.jobType}>
+<main
+    class="mdt-container"
+    data-job-type={authService.jobType}
+    data-department={departmentBrand.jobName}
+    style={`--accent-rgb:${departmentBrand.accentRgb};--accent-text-rgb:${departmentBrand.accentTextRgb}`}
+>
     <RadioPTT />
     <div class="mdt-window">
         <div class="mdt-interface">
-            <TopBar {authService} />
-
             <div class="mdt-content">
                 {#if !authService.isCivilian}
                     <div class="mdt-navigation">
                         {#if authService.isAuthorized}
-                            <NavigationPills {tabService} jobType={authService.jobType} {authService}/>
+                            <NavigationPills {tabService} jobType={authService.jobType} {authService} brand={departmentBrand}/>
                         {/if}
                     </div>
                 {/if}
                 <div class="mdt-main-content">
-                    {#if !authService.isCivilian}
-                        <InstanceTabs {tabService}/>
+                    {#if activeComponent !== "dashboard"}
+                        <TopBar {authService} />
+                        {#if !authService.isCivilian}
+                            <InstanceTabs {tabService}/>
+                        {/if}
                     {/if}
                     <ContentArea
                             {authService}
@@ -170,15 +184,15 @@
     }
 
     .mdt-window {
-        width: 95vw;
-        height: 90vh;
-        background: var(--dark-bg);
-        border-radius: 12px;
+        width: 100vw;
+        height: 100vh;
+        background: #0c1015;
+        border-radius: 0;
         overflow: hidden;
         display: flex;
         flex-direction: column;
-        box-shadow: 0 20px 40px rgba(23, 23, 23, 0.3);
-        border: 1px solid transparent;
+        box-shadow: none;
+        border: 0;
         position: relative;
         opacity: 1;
     }
@@ -202,13 +216,17 @@
 
     .mdt-content {
         display: flex;
-        height: calc(100% - 55px); /* Adjust for TopBar height */
+        height: 100%;
+        min-height: 0;
     }
 
     .mdt-navigation {
-        max-width: 250px;
-        background: var(--card-dark-bg);
+        width: 184px;
+        flex: 0 0 184px;
+        background: #0a0e13;
         display: flex;
+        border-right: 1px solid rgba(255, 255, 255, 0.07);
+        min-height: 0;
     }
 
     .mdt-main-content {
@@ -217,5 +235,6 @@
         flex: 1;
         min-width: 0;
         width: 100%;
+        background: #0e1319;
     }
 </style>

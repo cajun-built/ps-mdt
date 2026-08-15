@@ -197,6 +197,19 @@ Config.MedicalJobs = { 'ambulance' }
 
 DOJ access works two ways. Either the job name is in `Config.DojJobs`, or the job has `type = 'doj'` matching `Config.DojJobType`. You can use one or both.
 
+### Department logos
+
+The MDT header automatically uses the player's job name to select a department
+logo. Built-in paths are `police.png`, `lspd.png`, `bcso.png`, `sahp.png`,
+`ambulance.png`, and `doj.png` under `web/public/images/departments`.
+
+For another job, add a transparent PNG named exactly after the lowercase job
+name. For example, job `fib` uses `fib.png`. Run `npm run build` afterward. On a
+live resource that already contains the compiled UI, the same file can be placed
+directly in `web/dist/images/departments` without rebuilding. If an image is
+missing, the MDT displays a department-appropriate icon instead of a broken
+image.
+
 ### Keybind and command
 
 ```lua

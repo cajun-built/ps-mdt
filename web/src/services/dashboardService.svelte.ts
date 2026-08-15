@@ -324,17 +324,30 @@ export function createDashboardService() {
 				{ day: "Sun", hours: 0 },
 			];
 			activeWarrants = [
-				{ id: 1, name: "Marcus Johnson", expiryDate: new Date(now + 7 * 86400000).toISOString() } as any,
-				{ id: 2, name: "James Miller", expiryDate: new Date(now + 3 * 86400000).toISOString() } as any,
+				{ reportid: 33871, name: "Darnell Hayes", charges: ["Felony Assault with a Deadly Weapon"], felonies: 1, misdemeanors: 0, infractions: 0, expirydate: now + 7 * 86400000 },
+				{ reportid: 33842, name: "Luis Ortega", charges: ["Burglary – First Degree"], felonies: 1, misdemeanors: 0, infractions: 0, expirydate: now + 3 * 86400000 },
+				{ reportid: 33791, name: "Jamal Rivers", charges: ["Grand Theft Auto"], felonies: 1, misdemeanors: 0, infractions: 0, expirydate: now + 5 * 86400000 },
 			];
 			recentReports = [
-				{ id: "1", reportId: "RPT-001", title: "Armed Robbery at Fleeca Bank", author: "Ofc. Smith", type: "Incident", datecreated: now - 86400000, dateupdated: now - 3600000 } as any,
-				{ id: "2", reportId: "RPT-002", title: "Traffic Stop - Suspended License", author: "Ofc. Johnson", type: "Citation", datecreated: now - 172800000, dateupdated: now - 86400000 } as any,
-				{ id: "3", reportId: "RPT-003", title: "Drive-by Shooting on Vinewood Blvd", author: "Det. Williams", type: "Incident", datecreated: now - 259200000, dateupdated: now - 172800000 } as any,
+				{ id: 2021, title: "Traffic stop", author: "Ofc. M. Hale #2147", type: "Incident", contentyjs: new Uint8Array(), contentplaintext: "Routine traffic enforcement contact.", datecreated: now - 3600000, dateupdated: now - 1800000 },
+				{ id: 2016, title: "Suspicious activity", author: "Ofc. J. Ramirez #3182", type: "Incident", contentyjs: new Uint8Array(), contentplaintext: "Suspicious activity investigation.", datecreated: now - 7200000, dateupdated: now - 5400000 },
+				{ id: 2015, title: "Domestic disturbance", author: "Ofc. A. Nguyen #2451", type: "Incident", contentyjs: new Uint8Array(), contentplaintext: "Domestic disturbance response.", datecreated: now - 10800000, dateupdated: now - 9000000 },
+				{ id: 2014, title: "Vehicle theft", author: "Ofc. D. Parks #2764", type: "Incident", contentyjs: new Uint8Array(), contentplaintext: "Stolen vehicle report.", datecreated: now - 14400000, dateupdated: now - 12600000 },
+				{ id: 2013, title: "Noise complaint", author: "Ofc. T. Williams #3021", type: "Incident", contentyjs: new Uint8Array(), contentplaintext: "Noise complaint response.", datecreated: now - 18000000, dateupdated: now - 16200000 },
 			];
 			activeBolos = [
-				{ id: 1, reportId: "RPT-001", name: "Marcus Johnson", type: "citizen", notes: "Wanted for armed robbery" } as any,
-				{ id: 2, reportId: "RPT-003", name: "Black Kuruma", type: "vehicle", notes: "Suspected in drive-by shooting" } as any,
+				{ id: 1, reportId: "BOLO-26-158", name: "Black Benefactor Schafter", type: "vehicle", notes: "Stolen vehicle · last seen Pillbox Hill" },
+				{ id: 2, reportId: "BOLO-26-157", name: "Armed robbery suspect", type: "person", notes: "Male, black, 6'0\", 180 lbs" },
+				{ id: 3, reportId: "BOLO-26-156", name: "Silver Oracle XS", type: "vehicle", notes: "Kidnapping suspects · last seen La Puerta" },
+			];
+			upcomingHearings = [
+				{ id: 1, title: "State v. Darnell Hayes", defendant_name: "Darnell Hayes", scheduled_at: now + 3 * 86400000, location: "LS County Courthouse · Dept. 3B" },
+				{ id: 2, title: "State v. Luis Ortega", defendant_name: "Luis Ortega", scheduled_at: now + 4 * 86400000, location: "LS County Courthouse · Dept. 5A" },
+				{ id: 3, title: "State v. Jamal Rivers", defendant_name: "Jamal Rivers", scheduled_at: now + 5 * 86400000, location: "LS County Courthouse · Dept. 2B" },
+			];
+			openCases = [
+				{ id: 1, case_number: "C-26-0184", title: "Vespucci armed robberies", status: "in_progress", priority: "high", updated_at: now - 1800000 },
+				{ id: 2, case_number: "C-26-0179", title: "Alta Street vehicle theft ring", status: "open", priority: "normal", updated_at: now - 7200000 },
 			];
 			bulletins = [
 				{ id: 1, content: "Shift briefing at 0800 - mandatory attendance for all patrol units." },

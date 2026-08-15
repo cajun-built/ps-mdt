@@ -5,28 +5,39 @@
 	let {
 		report,
 		isExpanded = false,
+		table = false,
 		onToggle,
 		onNavigate,
 	}: {
 		report: DashboardData["recentReports"][0];
 		isExpanded?: boolean;
+		table?: boolean;
 		onToggle: (id: number) => void;
 		onNavigate: (id: number) => void;
 	} = $props();
 </script>
 
-<div class="report-item" class:expanded={isExpanded}>
+<div class="report-item" class:expanded={isExpanded} class:table>
 	<div class="report-row">
-		<div class="report-main">
-			<div class="report-title">{report.title}</div>
-			<div class="report-meta">
-				<span class="report-id">{report.id}</span>
-				<span class="dot"></span>
-				<span class="report-author">{report.author}</span>
-				<span class="dot"></span>
-				<span class="report-date">{formatDate(report.datecreated)}</span>
+		{#if table}
+			<div class="report-main table-main">
+				<div class="report-title">{report.title}</div>
+				<span class="report-id">#{report.id}</span>
 			</div>
-		</div>
+			<span class="report-author table-cell">{report.author}</span>
+			<span class="report-date table-cell">{formatDate(report.datecreated)}</span>
+		{:else}
+			<div class="report-main">
+				<div class="report-title">{report.title}</div>
+				<div class="report-meta">
+					<span class="report-id">{report.id}</span>
+					<span class="dot"></span>
+					<span class="report-author">{report.author}</span>
+					<span class="dot"></span>
+					<span class="report-date">{formatDate(report.datecreated)}</span>
+				</div>
+			</div>
+		{/if}
 		<div class="report-actions">
 			<button class="action-btn" onclick={() => onToggle(report.id)} title={isExpanded ? "Hide preview" : "Quick view"}>
 				<span class="material-icons">{isExpanded ? "visibility_off" : "visibility"}</span>
@@ -62,6 +73,18 @@
 	.report-item.expanded {
 		background: rgba(255, 255, 255, 0.03);
 	}
+	.report-item.table { padding: 0 5px; }
+	.table .report-row {
+		display: grid;
+		grid-template-columns: minmax(0, 1fr) 130px 90px 48px;
+		min-height: 37px;
+	}
+	.table-main { display: flex; align-items: center; gap: 8px; }
+	.table-main .report-title { margin: 0; flex: 1; font-size: 10.5px; font-weight: 560; }
+	.table-main .report-id { font-size: 9px; }
+	.table-cell { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 9.5px; }
+	.table .report-actions { justify-content: flex-end; }
+	.table .report-body { padding: 0 4px 8px; }
 
 	.report-row {
 		display: flex;
