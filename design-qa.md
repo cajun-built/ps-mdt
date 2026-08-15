@@ -1,35 +1,45 @@
-# Design QA — Command Dashboard
+# Design QA — Tablet Command Dashboard
 
-## Reference
+## Evidence
 
-- Source: `exec-690be4f5-aa8b-4c4c-8097-de32afbecfcf.png`
-- Target viewport: 1933 × 813
-- Implementation capture: `design-qa-implementation-final.png` (local QA artifact; not shipped)
+- Source visual truth: `/Users/moseti/.codex/generated_images/019ff6e7-3b88-78b0-9129-7bc9021884f9/exec-690be4f5-aa8b-4c4c-8097-de32afbecfcf.png`
+- Implementation capture: `/Users/moseti/.codex/visualizations/2026/08/12/019ff6e7-3b88-78b0-9129-7bc9021884f9/mdt-tablet-qa/implementation-1933x813.png`
+- Full-view comparison: `/Users/moseti/.codex/visualizations/2026/08/12/019ff6e7-3b88-78b0-9129-7bc9021884f9/mdt-tablet-qa/comparison-1933x813.png`
+- Secondary breakpoint: `/Users/moseti/.codex/visualizations/2026/08/12/019ff6e7-3b88-78b0-9129-7bc9021884f9/mdt-tablet-qa/implementation-1920x1080.png`
+- Primary viewport: 1933 × 813 CSS px at device scale factor 1.
+- Source and implementation pixels: 1933 × 813; no density normalization required.
+- Secondary viewport: 1920 × 1080 CSS px at device scale factor 1.
+- State: authenticated LSPD officer, on duty, Dashboard active, callsign set.
 
-## Visual comparison
+## Findings
 
-- [x] Full-screen, opaque dark terminal shell matches the selected command-desk direction.
-- [x] Department crest, department name, officer identity, duty state, and grouped navigation occupy the left rail.
-- [x] Dashboard hierarchy matches the reference: shift header, four KPIs, priority lists, unit status, recent reports, hearings, and open cases.
-- [x] Accent colors and status colors remain restrained and readable against the dark surfaces.
-- [x] Dense 1933 × 813 layout fits without horizontal overflow.
-- [x] Department logo failure state renders a deliberate icon fallback.
+- No actionable P0, P1, or P2 findings remain.
+- The full-view comparison confirms that the selected command-dashboard hierarchy, dark palette, department branding, KPI strip, and two-column workspace remain intact inside the new tablet frame.
+- The intentional framing change reduces the MDT from full-screen to 88vw × 84vh and adds an opaque hardware bezel, rounded glass, camera detail, and exterior shadow. The game remains visible only around the tablet, never through its screen.
+- At the short 1933 × 813 viewport, lower navigation and dashboard lists scroll within their existing regions. Persistent controls and primary dashboard actions remain visible.
+- At 1920 × 1080, the entire navigation and full dashboard composition fit comfortably without overflow.
 
-## Functional QA
+## Required fidelity surfaces
 
-- [x] Production frontend build completes.
-- [x] Sidebar navigation opens the existing MDT pages and returns to Dashboard.
-- [x] Callsign control opens and closes its modal.
-- [x] Existing live dashboard service remains the source of warrants, BOLOs, reports, bulletins, hearings, cases, units, and impound totals.
-- [x] Browser-only preview data is isolated from the FiveM runtime.
-- [x] No new browser console errors were introduced.
+- Fonts and typography: existing command-dashboard font sizes, weights, hierarchy, truncation, and antialiasing remain readable at both tested sizes.
+- Spacing and layout rhythm: centered tablet margins are balanced; bezel, screen inset, radii, dashboard grid, and internal panel gaps remain consistent.
+- Colors and visual tokens: opaque near-black screen surfaces preserve the selected palette; the exterior scrim is isolated from MDT content and does not recreate the earlier opacity issue.
+- Image quality and assets: the generated transparent LSPD crest remains sharp and correctly scaled; Material Icons supply the hardware camera and interface iconography.
+- Copy and content: department, officer, duty, callsign, warrants, BOLOs, reports, units, hearings, and cases retain production-bound labels and data sources.
 
-## Findings resolved
+## Interaction and runtime checks
 
-- P1: Removed the inset/translucent outer frame so the UI no longer exposes the game world through the terminal.
-- P1: Removed duplicate utility and instance bars from the Dashboard route to match the selected hierarchy.
-- P1: Corrected the main grid ratio and vertical rhythm to match the reference composition.
-- P2: Added realistic preview data and unit-status states so all dashboard regions can be visually inspected.
-- P2: Tightened the navigation so every section remains reachable at the target viewport.
+- Production frontend build completed.
+- Dashboard navigation, callsign modal, and return-to-dashboard flow remain functional.
+- Browser console checked with no new errors.
+- The responsive tablet media rule was visually checked at 1933 × 813 and 1920 × 1080.
 
-Final result: passed.
+## Comparison history
+
+- Earlier P1: the interface occupied the complete game viewport. Fixed by introducing a centered 88vw × 84vh tablet shell with an opaque inner display.
+- Earlier P1: the reduced viewport risked resembling a floating desktop window. Fixed with a physical bezel, inset glass radius, hardware camera detail, and stronger device elevation.
+- Post-fix evidence: the final comparison shows the original information hierarchy preserved inside a visibly separate tablet while exposing the surrounding game area.
+
+Focused-region comparison was not necessary: the change is primarily frame proportion and outer-shell treatment, while the previously approved inner dashboard was left unchanged.
+
+final result: passed

@@ -142,7 +142,8 @@
     style={`--accent-rgb:${departmentBrand.accentRgb};--accent-text-rgb:${departmentBrand.accentTextRgb}`}
 >
     <RadioPTT />
-    <div class="mdt-window">
+    <div class="mdt-window" aria-label="Mobile data terminal tablet">
+        <span class="tablet-camera material-icons" aria-hidden="true">fiber_manual_record</span>
         <div class="mdt-interface">
             <div class="mdt-content">
                 {#if !authService.isCivilian}
@@ -181,20 +182,39 @@
         align-items: center;
         justify-content: center;
         z-index: 1000;
+        padding: 4vh 5vw;
+        background: rgba(3, 6, 10, 0.32);
+        backdrop-filter: blur(1.5px);
     }
 
     .mdt-window {
-        width: 100vw;
-        height: 100vh;
-        background: #0c1015;
-        border-radius: 0;
-        overflow: hidden;
+        width: min(88vw, 1720px);
+        height: min(84vh, 900px);
+        padding: 13px;
+        background: #030609;
+        border-radius: 30px;
+        overflow: visible;
         display: flex;
         flex-direction: column;
-        box-shadow: none;
-        border: 0;
+        box-shadow:
+            0 34px 90px rgba(0, 0, 0, 0.72),
+            0 0 0 1px rgba(255, 255, 255, 0.09),
+            inset 0 0 0 1px rgba(255, 255, 255, 0.045);
+        border: 1px solid rgba(0, 0, 0, 0.95);
         position: relative;
         opacity: 1;
+    }
+
+    .tablet-camera {
+        position: absolute;
+        top: 3px;
+        left: 50%;
+        transform: translateX(-50%);
+        z-index: 3;
+        color: rgba(79, 98, 118, 0.75);
+        font-size: 7px;
+        line-height: 7px;
+        text-shadow: 0 0 4px rgba(36, 132, 220, 0.35);
     }
 
     :global([data-job-type="ems"]) .mdt-window {
@@ -212,6 +232,11 @@
         height: 100%;
         display: flex;
         flex-direction: column;
+        overflow: hidden;
+        border: 1px solid rgba(255, 255, 255, 0.075);
+        border-radius: 18px;
+        background: #0c1015;
+        box-shadow: inset 0 0 24px rgba(0, 0, 0, 0.32);
     }
 
     .mdt-content {
@@ -236,5 +261,20 @@
         min-width: 0;
         width: 100%;
         background: #0e1319;
+    }
+
+    @media (max-width: 1200px), (max-height: 720px) {
+        .mdt-container { padding: 3vh 3vw; }
+        .mdt-window {
+            width: 92vw;
+            height: 88vh;
+            padding: 10px;
+            border-radius: 24px;
+        }
+        .mdt-interface { border-radius: 15px; }
+        .mdt-navigation {
+            width: 168px;
+            flex-basis: 168px;
+        }
     }
 </style>
