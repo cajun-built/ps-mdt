@@ -183,13 +183,12 @@
         justify-content: center;
         z-index: 1000;
         padding: 4vh 5vw;
-        background: rgba(3, 6, 10, 0.32);
-        backdrop-filter: blur(1.5px);
+        background: transparent;
     }
 
     .mdt-window {
-        width: min(88vw, 1720px);
-        height: min(84vh, 900px);
+        width: 88vw;
+        height: 84vh;
         padding: 13px;
         background: #030609;
         border-radius: 30px;

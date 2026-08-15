@@ -1,45 +1,43 @@
-# Design QA — Tablet Command Dashboard
+# Design QA — FiveM Tablet Sizing and Transparency Fix
 
 ## Evidence
 
-- Source visual truth: `/Users/moseti/.codex/generated_images/019ff6e7-3b88-78b0-9129-7bc9021884f9/exec-690be4f5-aa8b-4c4c-8097-de32afbecfcf.png`
-- Implementation capture: `/Users/moseti/.codex/visualizations/2026/08/12/019ff6e7-3b88-78b0-9129-7bc9021884f9/mdt-tablet-qa/implementation-1933x813.png`
-- Full-view comparison: `/Users/moseti/.codex/visualizations/2026/08/12/019ff6e7-3b88-78b0-9129-7bc9021884f9/mdt-tablet-qa/comparison-1933x813.png`
-- Secondary breakpoint: `/Users/moseti/.codex/visualizations/2026/08/12/019ff6e7-3b88-78b0-9129-7bc9021884f9/mdt-tablet-qa/implementation-1920x1080.png`
-- Primary viewport: 1933 × 813 CSS px at device scale factor 1.
-- Source and implementation pixels: 1933 × 813; no density normalization required.
-- Secondary viewport: 1920 × 1080 CSS px at device scale factor 1.
+- Source visual truth: `/var/folders/zc/l1v63cp11dj1zys_vf9dzz3m0000gn/T/codex-clipboard-b14d9127-4f31-4aab-83a2-324a8cc8a866.png`
+- Source pixels: 3439 × 1439.
+- Normalized source: `/Users/moseti/.codex/visualizations/2026/08/12/019ff6e7-3b88-78b0-9129-7bc9021884f9/mdt-tablet-qa/source-problem-normalized-2223x960.png`
+- Implementation capture: `/Users/moseti/.codex/visualizations/2026/08/12/019ff6e7-3b88-78b0-9129-7bc9021884f9/mdt-tablet-qa/implementation-fixed-2295x960.png`
+- Full-view comparison: `/Users/moseti/.codex/visualizations/2026/08/12/019ff6e7-3b88-78b0-9129-7bc9021884f9/mdt-tablet-qa/comparison-fixed-2223x960.png`
+- Comparison pixels: 2223 × 960 per side at device scale factor 1.
 - State: authenticated LSPD officer, on duty, Dashboard active, callsign set.
 
 ## Findings
 
 - No actionable P0, P1, or P2 findings remain.
-- The full-view comparison confirms that the selected command-dashboard hierarchy, dark palette, department branding, KPI strip, and two-column workspace remain intact inside the new tablet frame.
-- The intentional framing change reduces the MDT from full-screen to 88vw × 84vh and adds an opaque hardware bezel, rounded glass, camera detail, and exterior shadow. The game remains visible only around the tablet, never through its screen.
-- At the short 1933 × 813 viewport, lower navigation and dashboard lists scroll within their existing regions. Persistent controls and primary dashboard actions remain visible.
-- At 1920 × 1080, the entire navigation and full dashboard composition fit comfortably without overflow.
+- The FiveM capture showed a P1 full-viewport black layer around the tablet. The outer `.mdt-container` is now fully transparent and no longer uses `backdrop-filter`; the tablet screen and bezel remain opaque.
+- The FiveM capture showed a P1 undersized tablet at 3439 × 1439 because `max-width: 1720px` and `max-height: 900px` stopped viewport scaling. Both fixed-pixel caps were removed. The tablet now occupies 88vw × 84vh at every supported resolution.
+- The normalized side-by-side comparison confirms the tablet grows from roughly half the ultrawide viewport to the intended 88% width while preserving balanced margins.
 
 ## Required fidelity surfaces
 
-- Fonts and typography: existing command-dashboard font sizes, weights, hierarchy, truncation, and antialiasing remain readable at both tested sizes.
-- Spacing and layout rhythm: centered tablet margins are balanced; bezel, screen inset, radii, dashboard grid, and internal panel gaps remain consistent.
-- Colors and visual tokens: opaque near-black screen surfaces preserve the selected palette; the exterior scrim is isolated from MDT content and does not recreate the earlier opacity issue.
-- Image quality and assets: the generated transparent LSPD crest remains sharp and correctly scaled; Material Icons supply the hardware camera and interface iconography.
-- Copy and content: department, officer, duty, callsign, warrants, BOLOs, reports, units, hearings, and cases retain production-bound labels and data sources.
+- Fonts and typography: unchanged from the approved command-dashboard design and remain readable at the corrected tablet size.
+- Spacing and layout rhythm: 6vw total horizontal exterior space and 16vh total vertical exterior space produce a centered held-tablet composition without approaching full screen.
+- Colors and visual tokens: only the outer overlay changed to transparent; the near-black tablet bezel and screen surfaces remain fully opaque.
+- Image quality and assets: the department crest and Material Icons remain sharp at the larger ultrawide scale.
+- Copy and content: all dashboard labels and production-bound data remain unchanged.
 
 ## Interaction and runtime checks
 
 - Production frontend build completed.
 - Dashboard navigation, callsign modal, and return-to-dashboard flow remain functional.
 - Browser console checked with no new errors.
-- The responsive tablet media rule was visually checked at 1933 × 813 and 1920 × 1080.
+- Responsive layout visually checked at the available ultrawide browser viewport and against the supplied 3439 × 1439 FiveM capture.
 
 ## Comparison history
 
-- Earlier P1: the interface occupied the complete game viewport. Fixed by introducing a centered 88vw × 84vh tablet shell with an opaque inner display.
-- Earlier P1: the reduced viewport risked resembling a floating desktop window. Fixed with a physical bezel, inset glass radius, hardware camera detail, and stronger device elevation.
-- Post-fix evidence: the final comparison shows the original information hierarchy preserved inside a visibly separate tablet while exposing the surrounding game area.
+- P1: game world was completely black outside the device. Fixed by removing the full-screen color layer and CEF-sensitive backdrop filter.
+- P1: tablet was only about half the viewport width on ultrawide. Fixed by removing fixed maximum dimensions and retaining viewport-relative sizing.
+- Post-fix evidence: the comparison shows a transparent exterior canvas and an 88%-wide tablet with the original opaque screen treatment intact.
 
-Focused-region comparison was not necessary: the change is primarily frame proportion and outer-shell treatment, while the previously approved inner dashboard was left unchanged.
+Focused-region comparison was not needed because the defect and fix are confined to the full-view outer frame and viewport proportions; the approved dashboard internals were unchanged.
 
 final result: passed
