@@ -33,9 +33,9 @@ Config.Sharing = {
             'warrants'
         },
         departments = {
-            'lspd',
-            'bcso',
-            'sahp'
+            'brpd',
+            'ebrso',
+            'lsp'
         }
     },
 
@@ -48,9 +48,9 @@ Config.Sharing = {
                 'gov'
             },
             targets = {
-                'lspd',
-                'bcso',
-                'sahp'
+                'brpd',
+                'ebrso',
+                'lsp'
             },
             types = {
                 'reports',
@@ -350,7 +350,9 @@ Config.WeaponImagePath = 'nui://ox_inventory/web/images/'
 -- vehicle is being held while impounded.
 Config.Impound = {
     Lots = {
-        { id = 'lspd',   label = 'LSPD Impound' },
+        { id = 'brpd',  label = 'BRPD Impound' },
+        { id = 'ebrso', label = 'EBRSO Impound' },
+        { id = 'lsp',   label = 'LSP Impound' },
         { id = 'paleto', label = 'Paleto Impound' },
     },
 
@@ -441,9 +443,9 @@ Config.Impound = {
 -- Job Settings
 Config.PoliceJobType = "leo"
 Config.PoliceJobs = {
-    'lspd',
-    'bcso',
-    'sahp',
+    'brpd',
+    'ebrso',
+    'lsp',
     'fib',
     'gov'
 }
