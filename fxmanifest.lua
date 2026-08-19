@@ -6,7 +6,7 @@ game 'gta5'
 name 'ps-mdt'
 author "Project Sloth Development Team"
 description 'Project Sloth MDT'
-version '3.1.9-cgn-agency-focus'
+version '3.1.10-cgn-record-governance'
 
 ui_page 'web/dist/index.html'
 

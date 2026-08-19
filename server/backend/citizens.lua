@@ -962,8 +962,13 @@ ps.registerCallback(resourceName .. ':server:deleteBolo', function(source, paylo
         return { success = false, message = 'Invalid BOLO ID' }
     end
 
+    local reason = type(payload.reason) == 'string' and payload.reason:gsub('^%s+', ''):gsub('%s+$', '') or ''
+    if reason == '' then
+        return { success = false, message = 'reason_required' }
+    end
+
     local success, errorCode = SetMdtRecordLifecycle(
-        src, 'bolo', id, 'voided', payload.reason or 'BOLO voided through MDT deletion action'
+        src, 'bolo', id, 'voided', reason
     )
     return { success = success, message = errorCode }
 end)
@@ -1005,8 +1010,10 @@ ps.registerCallback(resourceName .. ':server:updateBoloStatus', function(source,
     afterRecord.status = status
     afterRecord.lifecycle_status = lifecycleStatus
     afterRecord.version = nextVersion
-    local reason = type(payload.reason) == 'string' and payload.reason:gsub('^%s+', ''):gsub('%s+$', '')
-        or 'BOLO status changed through MDT'
+    local reason = type(payload.reason) == 'string' and payload.reason:gsub('^%s+', ''):gsub('%s+$', '') or ''
+    if reason == '' then
+        return { success = false, message = 'reason_required' }
+    end
     local transactionFailure = 'Failed to update BOLO status'
     local callOk, success = pcall(function()
         return MySQL.startTransaction(function(query)

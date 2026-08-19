@@ -76,7 +76,8 @@
 	];
 	const allowedEvidenceImageTypes = ["image/jpeg", "image/png", "image/webp"];
 
-	const statusOptions: CaseStatus[] = ["open", "in_progress", "closed"];
+	const statusOptions: CaseStatus[] = ["open", "in_progress"];
+	const statusFilterOptions: CaseStatus[] = [...statusOptions, "closed"];
 	const priorityOptions: CasePriority[] = ["low", "medium", "high"];
 
 	let checklist = $state({
@@ -268,17 +269,6 @@
 		await caseService.updateCase(selectedCase.case.id, update);
 		await selectCase(selectedCase.case.id);
 		await loadCases();
-	}
-
-	async function handleDeleteCase() {
-		if (!selectedCase) return;
-		const id = selectedCase.case.id;
-		const success = await caseService.deleteCase(id);
-		if (success) {
-			selectedCase = null;
-			showCaseView = false;
-			await loadCases();
-		}
 	}
 
 	function openCreatePanel() {
@@ -497,16 +487,6 @@
 		await selectCase(selectedCase.case.id);
 	}
 
-	async function handleDeleteEvidence(evidenceId: number) {
-		if (!selectedCase) return;
-		await caseService.deleteEvidenceItem(evidenceId);
-		if (selectedEvidenceId === evidenceId) {
-			selectedEvidenceId = null;
-			evidenceCustody = [];
-		}
-		await selectCase(selectedCase.case.id);
-	}
-
 	async function handleSelectEvidence(evidenceId: number) {
 		selectedEvidenceId = evidenceId;
 		evidenceCustody = await caseService.getEvidenceCustody(evidenceId);
@@ -684,11 +664,15 @@
 					<div class="field-row">
 						<div class="field-group">
 							<span class="field-label">Status</span>
-							<select class="form-select" value={selectedCase.case.status} onchange={(event) => handleUpdateCase({ status: (event.target as HTMLSelectElement).value })}>
-								{#each statusOptions as option}
-									<option value={option}>{formatStatus(option)}</option>
-								{/each}
-							</select>
+							{#if (selectedCase.case.lifecycle_status || "active") === "active"}
+								<select class="form-select" value={selectedCase.case.status} onchange={(event) => handleUpdateCase({ status: (event.target as HTMLSelectElement).value })}>
+									{#each statusOptions as option}
+										<option value={option}>{formatStatus(option)}</option>
+									{/each}
+								</select>
+							{:else}
+								<div class="form-input">{formatStatus(selectedCase.case.lifecycle_status || selectedCase.case.status)}</div>
+							{/if}
 						</div>
 						<div class="field-group">
 							<span class="field-label">Priority</span>
@@ -701,12 +685,6 @@
 						<div class="field-group">
 							<span class="field-label">Department</span>
 							<input class="form-input" value={selectedCase.case.assigned_department || ""} onchange={(event) => handleUpdateCase({ department: (event.target as HTMLInputElement).value })} />
-						</div>
-						<div class="field-group field-group-actions">
-							<button class="danger-btn" onclick={handleDeleteCase}>
-								<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
-								Delete
-							</button>
 						</div>
 					</div>
 				</div>
@@ -905,10 +883,6 @@
 										<button class="action-btn" onclick={() => handleUpdateEvidence(item.id, { stored: !item.stored })}>
 											{item.stored ? "Unstore" : "Store"}
 										</button>
-										<button class="remove-btn" onclick={() => handleDeleteEvidence(item.id)}>
-											<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
-											Remove
-										</button>
 									</div>
 								</div>
 							{/each}
@@ -1058,7 +1032,7 @@
 			</div>
 			<select class="form-select-sm" bind:value={filters.status} onchange={loadCases}>
 				<option value="">All Status</option>
-				{#each statusOptions as option}
+				{#each statusFilterOptions as option}
 					<option value={option}>{formatStatus(option)}</option>
 				{/each}
 			</select>

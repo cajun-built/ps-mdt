@@ -795,7 +795,15 @@
 			Number(report.reportId),
 		);
 		if (response?.success && response.caseId) {
-			await linkEvidenceToCase(evidenceId, String(response.caseId));
+			const evidenceIndex = report.evidence.findIndex(
+				(item) => item.id === evidenceId,
+			);
+			if (evidenceIndex !== -1) {
+				report.evidence[evidenceIndex] = {
+					...report.evidence[evidenceIndex],
+					caseId: String(response.caseId),
+				} as any;
+			}
 		}
 	}
 

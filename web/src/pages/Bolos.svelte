@@ -117,44 +117,6 @@
 		}
 	}
 
-	async function resolveBolo(boloId: number) {
-		try {
-			const response = await fetchNui<{ success: boolean; message?: string }>(
-				NUI_EVENTS.CITIZEN.UPDATE_BOLO_STATUS,
-				{ id: boloId, status: "resolved" }
-			);
-			if (response?.success) {
-				const bolo = bolos.find((b) => b.id === boloId);
-				if (bolo) bolo.status = "resolved";
-				bolos = [...bolos];
-				if (selectedBolo?.id === boloId) selectedBolo.status = "resolved";
-				globalNotifications.success("BOLO marked as resolved");
-			} else {
-				globalNotifications.error(response?.message || "Failed to resolve BOLO");
-			}
-		} catch {
-			globalNotifications.error("Failed to resolve BOLO");
-		}
-	}
-
-	async function deleteBolo(boloId: number) {
-		try {
-			const response = await fetchNui<{ success: boolean; message?: string }>(
-				NUI_EVENTS.CITIZEN.DELETE_BOLO,
-				{ id: boloId }
-			);
-			if (response?.success) {
-				bolos = bolos.filter((b) => b.id !== boloId);
-				selectedBolo = null;
-				globalNotifications.success("BOLO deleted");
-			} else {
-				globalNotifications.error(response?.message || "Failed to delete BOLO");
-			}
-		} catch {
-			globalNotifications.error("Failed to delete BOLO");
-		}
-	}
-
 	function goToReport(reportId: string) {
 		if (reportId && reportId !== "N/A") {
 			openReportInEditor(String(reportId));
@@ -321,18 +283,6 @@
 				/>
 			</div>
 			<div class="modal-footer">
-				<div class="modal-footer-left">
-					{#if selectedBolo.status === 'active'}
-						<button class="resolve-btn" onclick={() => { if (selectedBolo) resolveBolo(selectedBolo.id); }}>
-							<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
-							Resolve
-						</button>
-					{/if}
-					<button class="delete-btn" onclick={() => { if (selectedBolo) deleteBolo(selectedBolo.id); }}>
-						<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
-						Delete
-					</button>
-				</div>
 				<div class="modal-footer-right">
 					{#if selectedBolo.reportId && selectedBolo.reportId !== "N/A"}
 						<button class="action-btn" onclick={() => { if (selectedBolo) goToReport(selectedBolo.reportId); }}>View Report</button>

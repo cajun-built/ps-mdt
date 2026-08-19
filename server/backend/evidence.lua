@@ -216,36 +216,54 @@ ps.registerCallback(resourceName .. ':server:addEvidenceItem', function(source, 
     )
     if compartmentError then return { success = false, error = compartmentError } end
 
-    local evidenceId = MySQL.insert.await([[
-        INSERT INTO mdt_evidence_items
-        (case_id, report_id, title, type, serial, notes, location, stash_id,
-         stored, last_holder, created_by, owning_agency, task_force_id, compartment)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-    ]], {
-        caseId,
-        reportId,
-        evidence.title,
-        evidence.type or 'Evidence',
-        evidence.serial or '',
-        evidence.notes or '',
-        evidence.location or '',
-        evidence.stashId or '',
-        evidence.stored and 1 or 0,
-        ps.getIdentifier(src),
-        ps.getIdentifier(src),
-        owningAgency,
-        taskForceId,
-        compartment
-    })
+    local citizenid = ps.getIdentifier(src)
+    local evidenceId = nil
+    local transactionFailure = 'Failed to add evidence'
+    local callOk, success = pcall(function()
+        return MySQL.startTransaction(function(query)
+            local insertResult = query([[
+                INSERT INTO mdt_evidence_items
+                (case_id, report_id, title, type, serial, notes, location, stash_id,
+                 stored, last_holder, created_by, owning_agency, task_force_id, compartment)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ]], {
+                caseId,
+                reportId,
+                evidence.title,
+                evidence.type or 'Evidence',
+                evidence.serial or '',
+                evidence.notes or '',
+                evidence.location or '',
+                evidence.stashId or '',
+                evidence.stored and 1 or 0,
+                citizenid,
+                citizenid,
+                owningAgency,
+                taskForceId,
+                compartment
+            })
+            evidenceId = insertResult and tonumber(insertResult.insertId) or nil
+            if not insertResult or tonumber(insertResult.affectedRows) ~= 1 or not evidenceId then
+                transactionFailure = 'evidence_insert_failed'
+                return false
+            end
 
-    if not evidenceId then
-        return { success = false, error = 'Failed to add evidence' }
+            local custodyResult = query([[
+                INSERT INTO mdt_evidence_custody
+                    (evidence_id, from_citizenid, to_citizenid, action, notes)
+                VALUES (?, ?, ?, 'collected', ?)
+            ]], { evidenceId, nil, citizenid, evidence.notes or '' })
+            if not custodyResult or tonumber(custodyResult.affectedRows) ~= 1 then
+                transactionFailure = 'initial_custody_failed'
+                return false
+            end
+            return true
+        end)
+    end)
+
+    if not callOk or success ~= true then
+        return { success = false, error = transactionFailure }
     end
-
-    MySQL.insert.await([[
-        INSERT INTO mdt_evidence_custody (evidence_id, from_citizenid, to_citizenid, action, notes)
-        VALUES (?, ?, ?, 'collected', ?)
-    ]], { evidenceId, nil, ps.getIdentifier(src), evidence.notes or '' })
 
     if ps.auditLog then
         ps.auditLog(src, 'evidence_added', 'evidence', evidenceId, evidence)
@@ -383,16 +401,22 @@ ps.registerCallback(resourceName .. ':server:updateEvidenceItem', function(sourc
     return { success = true }
 end)
 
-ps.registerCallback(resourceName .. ':server:deleteEvidenceItem', function(source, evidenceId)
+ps.registerCallback(resourceName .. ':server:deleteEvidenceItem', function(source, payload)
     local src = source
     if not CheckAuth(src) then return { success = false, error = 'Unauthorized' } end
-    evidenceId = tonumber(evidenceId)
+    payload = type(payload) == 'table' and payload or { evidenceId = payload }
+    local evidenceId = tonumber(payload.evidenceId or payload.id)
     if not evidenceId then
         return { success = false, error = 'Invalid evidence id' }
     end
 
+    local reason = type(payload.reason) == 'string' and payload.reason:gsub('^%s+', ''):gsub('%s+$', '') or ''
+    if reason == '' then
+        return { success = false, error = 'reason_required' }
+    end
+
     local success, errorCode = SetMdtRecordLifecycle(
-        src, 'evidence', evidenceId, 'voided', 'Evidence voided through MDT deletion action'
+        src, 'evidence', evidenceId, 'voided', reason
     )
     return { success = success, error = errorCode }
 end)
@@ -555,16 +579,6 @@ ps.registerCallback(resourceName .. ':server:removeEvidenceImage', function(sour
     return { success = true }
 end)
 
-local function linkReportToCase(reportId, caseId, citizenid)
-    if not reportId or not caseId then
-        return
-    end
-    MySQL.insert.await([[
-        INSERT IGNORE INTO mdt_case_reports (case_id, report_id, linked_by)
-        VALUES (?, ?, ?)
-    ]], { caseId, reportId, citizenid })
-end
-
 ps.registerCallback(resourceName .. ':server:linkEvidenceToCase', function(source, evidenceId, caseId, reportId)
     local src = source
     if not CheckAuth(src) then return { success = false, error = 'Unauthorized' } end
@@ -592,14 +606,62 @@ ps.registerCallback(resourceName .. ':server:linkEvidenceToCase', function(sourc
     local caseAllowed, caseDenied = AuthorizeMdtRecord(src, 'record_create', 'case', caseRecord, true)
     if not caseAllowed then return { success = false, error = caseDenied } end
 
-    MySQL.update.await('UPDATE mdt_evidence_items SET case_id = ? WHERE id = ?', { caseId, evidenceId })
-
     if reportId then
         local reportRecord = GetMdtRecord('report', reportId)
-        local reportAllowed = AuthorizeMdtRecord(src, 'record_create', 'report', reportRecord, true)
-        if reportAllowed then
-            linkReportToCase(reportId, caseId, ps.getIdentifier(src))
-        end
+        local reportAllowed, reportDenied = AuthorizeMdtRecord(src, 'record_create', 'report', reportRecord, true)
+        if not reportAllowed then return { success = false, error = reportDenied } end
+    end
+
+    local actor = GetMdtRecordActor(src)
+    if not actor then return { success = false, error = 'identity_unavailable' } end
+    local nextVersion = (tonumber(evidenceRecord.version) or 1) + 1
+    local afterRecord = {}
+    for key, value in pairs(evidenceRecord) do afterRecord[key] = value end
+    afterRecord.case_id = caseId
+    afterRecord.version = nextVersion
+    local transactionFailure = 'Failed to link evidence to case'
+    local callOk, success = pcall(function()
+        return MySQL.startTransaction(function(query)
+            local updateResult = query([[
+                UPDATE mdt_evidence_items
+                SET case_id = ?, version = ?
+                WHERE id = ? AND version = ?
+            ]], { caseId, nextVersion, evidenceId, tonumber(evidenceRecord.version) or 1 })
+            if not updateResult or tonumber(updateResult.affectedRows) ~= 1 then
+                transactionFailure = 'record_version_conflict'
+                return false
+            end
+
+            local revisionResult = query([[
+                INSERT INTO mdt_record_revisions
+                    (record_type, record_id, revision_number, action, author_citizenid,
+                     author_name, author_agency, reason, before_json, after_json)
+                VALUES ('evidence', ?, ?, 'linked_case', ?, ?, ?, ?, ?, ?)
+            ]], {
+                evidenceId, nextVersion, actor.citizenid, actor.name, actor.agency,
+                ('Evidence linked to case %s'):format(caseRecord.case_number or caseId),
+                json.encode(evidenceRecord), json.encode(afterRecord),
+            })
+            if not revisionResult or tonumber(revisionResult.affectedRows) ~= 1 then
+                transactionFailure = 'revision_failed'
+                return false
+            end
+
+            if reportId then
+                local relationResult = query([[
+                    INSERT IGNORE INTO mdt_case_reports (case_id, report_id, linked_by)
+                    VALUES (?, ?, ?)
+                ]], { caseId, reportId, actor.citizenid })
+                if not relationResult then
+                    transactionFailure = 'report_link_failed'
+                    return false
+                end
+            end
+            return true
+        end)
+    end)
+    if not callOk or success ~= true then
+        return { success = false, error = transactionFailure }
     end
 
     if ps.auditLog then
@@ -630,7 +692,46 @@ ps.registerCallback(resourceName .. ':server:linkEvidenceToReport', function(sou
     local reportAllowed, reportDenied = AuthorizeMdtRecord(src, 'record_create', 'report', reportRecord, true)
     if not reportAllowed then return { success = false, error = reportDenied } end
 
-    MySQL.update.await('UPDATE mdt_evidence_items SET report_id = ? WHERE id = ?', { reportId, evidenceId })
+    local actor = GetMdtRecordActor(src)
+    if not actor then return { success = false, error = 'identity_unavailable' } end
+    local nextVersion = (tonumber(evidenceRecord.version) or 1) + 1
+    local afterRecord = {}
+    for key, value in pairs(evidenceRecord) do afterRecord[key] = value end
+    afterRecord.report_id = reportId
+    afterRecord.version = nextVersion
+    local transactionFailure = 'Failed to link evidence to report'
+    local callOk, success = pcall(function()
+        return MySQL.startTransaction(function(query)
+            local updateResult = query([[
+                UPDATE mdt_evidence_items
+                SET report_id = ?, version = ?
+                WHERE id = ? AND version = ?
+            ]], { reportId, nextVersion, evidenceId, tonumber(evidenceRecord.version) or 1 })
+            if not updateResult or tonumber(updateResult.affectedRows) ~= 1 then
+                transactionFailure = 'record_version_conflict'
+                return false
+            end
+
+            local revisionResult = query([[
+                INSERT INTO mdt_record_revisions
+                    (record_type, record_id, revision_number, action, author_citizenid,
+                     author_name, author_agency, reason, before_json, after_json)
+                VALUES ('evidence', ?, ?, 'linked_report', ?, ?, ?, ?, ?, ?)
+            ]], {
+                evidenceId, nextVersion, actor.citizenid, actor.name, actor.agency,
+                ('Evidence linked to report %s'):format(reportId),
+                json.encode(evidenceRecord), json.encode(afterRecord),
+            })
+            if not revisionResult or tonumber(revisionResult.affectedRows) ~= 1 then
+                transactionFailure = 'revision_failed'
+                return false
+            end
+            return true
+        end)
+    end)
+    if not callOk or success ~= true then
+        return { success = false, error = transactionFailure }
+    end
 
     if ps.auditLog then
         ps.auditLog(src, 'evidence_linked_report', 'evidence', evidenceId, {
@@ -655,28 +756,92 @@ ps.registerCallback(resourceName .. ':server:createCaseFromEvidence', function(s
     local evidenceAllowed, evidenceDenied = AuthorizeMdtRecord(src, 'evidence_create', 'evidence', evidenceRecord, true)
     if not evidenceAllowed then return { success = false, error = evidenceDenied } end
 
+    if reportId then
+        local reportRecord = GetMdtRecord('report', reportId)
+        local reportAllowed, reportDenied = AuthorizeMdtRecord(src, 'record_create', 'report', reportRecord, true)
+        if not reportAllowed then return { success = false, error = reportDenied } end
+    end
+
     local citizenid = ps.getIdentifier(src)
     local createdByName = (ps.getMetadata(src, 'callsign') or '') .. ' ' .. (ps.getPlayerName(src) or '')
     createdByName = createdByName:gsub('^%s+', ''):gsub('%s+$', '')
+    local actor = GetMdtRecordActor(src)
+    if not actor then return { success = false, error = 'identity_unavailable' } end
+    local caseId = nil
+    local caseNumber = nil
+    local nextVersion = (tonumber(evidenceRecord.version) or 1) + 1
+    local transactionFailure = 'Failed to create case'
+    local callOk, success = pcall(function()
+        return MySQL.startTransaction(function(query)
+            local insertResult = query([[INSERT INTO mdt_cases
+                (case_number, title, summary, status, priority, assigned_department,
+                 owning_agency, task_force_id, created_by, created_by_name)
+                VALUES ('', ?, ?, 'open', 'medium', ?, ?, ?, ?, ?)
+            ]], {
+                'Evidence Follow-up', 'Case created from evidence link', evidenceRecord.owning_agency,
+                evidenceRecord.owning_agency, evidenceRecord.task_force_id, citizenid, createdByName
+            })
+            caseId = insertResult and tonumber(insertResult.insertId) or nil
+            if not insertResult or tonumber(insertResult.affectedRows) ~= 1 or not caseId then
+                transactionFailure = 'case_insert_failed'
+                return false
+            end
 
-    local caseId = MySQL.insert.await([[INSERT INTO mdt_cases
-        (case_number, title, summary, status, priority, assigned_department,
-         owning_agency, task_force_id, created_by, created_by_name)
-        VALUES ('', ?, ?, 'open', 'medium', ?, ?, ?, ?, ?)
-    ]], {
-        'Evidence Follow-up', 'Case created from evidence link', evidenceRecord.owning_agency,
-        evidenceRecord.owning_agency, evidenceRecord.task_force_id, citizenid, createdByName
-    })
+            caseNumber = ('CASE-%s-%05d'):format(os.date('%Y'), caseId)
+            local caseNumberResult = query(
+                'UPDATE mdt_cases SET case_number = ? WHERE id = ?',
+                { caseNumber, caseId }
+            )
+            if not caseNumberResult or tonumber(caseNumberResult.affectedRows) ~= 1 then
+                transactionFailure = 'case_number_failed'
+                return false
+            end
 
-    if not caseId then
-        return { success = false, error = 'Failed to create case' }
-    end
+            local evidenceUpdateResult = query([[
+                UPDATE mdt_evidence_items
+                SET case_id = ?, version = ?
+                WHERE id = ? AND version = ?
+            ]], { caseId, nextVersion, evidenceId, tonumber(evidenceRecord.version) or 1 })
+            if not evidenceUpdateResult or tonumber(evidenceUpdateResult.affectedRows) ~= 1 then
+                transactionFailure = 'record_version_conflict'
+                return false
+            end
 
-    local caseNumber = ('CASE-%s-%05d'):format(os.date('%Y'), caseId)
-    MySQL.update.await('UPDATE mdt_cases SET case_number = ? WHERE id = ?', { caseNumber, caseId })
-    MySQL.update.await('UPDATE mdt_evidence_items SET case_id = ? WHERE id = ?', { caseId, evidenceId })
-    if reportId then
-        linkReportToCase(reportId, caseId, citizenid)
+            local afterRecord = {}
+            for key, value in pairs(evidenceRecord) do afterRecord[key] = value end
+            afterRecord.case_id = caseId
+            afterRecord.version = nextVersion
+            local revisionResult = query([[
+                INSERT INTO mdt_record_revisions
+                    (record_type, record_id, revision_number, action, author_citizenid,
+                     author_name, author_agency, reason, before_json, after_json)
+                VALUES ('evidence', ?, ?, 'linked_case', ?, ?, ?, ?, ?, ?)
+            ]], {
+                evidenceId, nextVersion, actor.citizenid, actor.name, actor.agency,
+                ('Evidence linked to newly created case %s'):format(caseNumber),
+                json.encode(evidenceRecord), json.encode(afterRecord),
+            })
+            if not revisionResult or tonumber(revisionResult.affectedRows) ~= 1 then
+                transactionFailure = 'revision_failed'
+                return false
+            end
+
+            if reportId then
+                local relationResult = query([[
+                    INSERT IGNORE INTO mdt_case_reports (case_id, report_id, linked_by)
+                    VALUES (?, ?, ?)
+                ]], { caseId, reportId, citizenid })
+                if not relationResult then
+                    transactionFailure = 'report_link_failed'
+                    return false
+                end
+            end
+            return true
+        end)
+    end)
+
+    if not callOk or success ~= true then
+        return { success = false, error = transactionFailure }
     end
 
     if ps.auditLog then

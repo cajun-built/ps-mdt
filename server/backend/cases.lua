@@ -16,6 +16,17 @@ local function normalizeStatus(status)
     return 'open'
 end
 
+local function normalizeOperationalStatus(status)
+    local value = status and tostring(status):lower() or 'open'
+    if value == 'open' or value == 'in_progress' then
+        return value
+    end
+    if value == 'in progress' then
+        return 'in_progress'
+    end
+    return 'open'
+end
+
 local function getOfficerDisplayName(src)
     local callsign = ps.getMetadata(src, 'callsign')
     local name = ps.getPlayerName(src) or 'Unknown'
@@ -39,7 +50,7 @@ ps.registerCallback(resourceName .. ':server:createCase', function(source, paylo
     payload = payload or {}
     local title = payload.title or 'Untitled Case'
     local summary = payload.summary or ''
-    local status = normalizeStatus(payload.status)
+    local status = normalizeOperationalStatus(payload.status)
     local priority = payload.priority or 'medium'
     local department = payload.department or ps.getJobName(src) or 'police'
 
@@ -345,7 +356,11 @@ ps.registerCallback(resourceName .. ':server:updateCase', function(source, caseI
     if not allowed then return { success = false, error = denied } end
 
     payload = payload or {}
-    local status = payload.status and normalizeStatus(payload.status) or nil
+    local requestedStatus = payload.status and tostring(payload.status):lower() or nil
+    if requestedStatus == 'closed' then
+        return { success = false, error = 'use_lifecycle_control' }
+    end
+    local status = payload.status and normalizeOperationalStatus(payload.status) or nil
     local priority = payload.priority
 
     local updates = {}
@@ -439,16 +454,22 @@ ps.registerCallback(resourceName .. ':server:updateCase', function(source, caseI
     return { success = true }
 end)
 
-ps.registerCallback(resourceName .. ':server:deleteCase', function(source, caseId)
+ps.registerCallback(resourceName .. ':server:deleteCase', function(source, payload)
     local src = source
     if not CheckAuth(src) then return { success = false, error = 'Unauthorized' } end
-    caseId = tonumber(caseId)
+    payload = type(payload) == 'table' and payload or { caseId = payload }
+    local caseId = tonumber(payload.caseId or payload.id)
     if not caseId then
         return { success = false, error = 'Invalid case id' }
     end
 
+    local reason = type(payload.reason) == 'string' and payload.reason:gsub('^%s+', ''):gsub('%s+$', '') or ''
+    if reason == '' then
+        return { success = false, error = 'reason_required' }
+    end
+
     local success, errorCode = SetMdtRecordLifecycle(
-        src, 'case', caseId, 'voided', 'Case voided through MDT deletion action'
+        src, 'case', caseId, 'voided', reason
     )
     return { success = success, error = errorCode }
 end)

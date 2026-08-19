@@ -113,7 +113,7 @@ RegisterNUICallback('deleteCase', function(data, cb)
         return
     end
 
-    local result = ps.callback(resourceName .. ':server:deleteCase', data.caseId)
+    local result = ps.callback(resourceName .. ':server:deleteCase', data)
     cb(result or { success = false })
 end)
 
@@ -263,7 +263,7 @@ RegisterNUICallback('deleteEvidenceItem', function(data, cb)
         return
     end
 
-    local result = ps.callback(resourceName .. ':server:deleteEvidenceItem', data.evidenceId)
+    local result = ps.callback(resourceName .. ':server:deleteEvidenceItem', data)
     cb(result or { success = false })
 end)
 
