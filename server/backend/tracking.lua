@@ -467,6 +467,9 @@ ps.registerCallback(resourceName .. ':server:getTracking', function(source)
     if not CheckAuth(source) then
         return { vehicles = {}, bodycams = {} }
     end
+    if not CheckPermission(source, 'map_patrols_view') then
+        return { vehicles = {}, bodycams = {} }
+    end
     -- EMS see EMS units; police/DOJ see police units.
     local domain = GetMdtDomain(source)
     local snap = getTrackingSnapshot(domain)
@@ -538,6 +541,7 @@ end)
 ps.registerCallback(resourceName .. ":server:getPatrols", function(source)
     local src = source
     if not CheckAuth(src) then return {} end
+    if not CheckPermission(src, 'map_patrols_view') then return {} end
     local domain = GetMdtDomain(src)
     local ordered = {}
     for _, id in ipairs(patrolOrder) do
@@ -552,6 +556,7 @@ end)
 RegisterNetEvent(resourceName .. ":server:createPatrol", function(id, name, color)
     local src = source
     if not CheckAuth(src) then return end
+    if not CheckPermission(src, 'map_patrols_edit') then return end
     if not isValidPatrolId(id) or not isValidName(name) or not isValidColor(color) then return end
     if patrols[id] then return end
 
@@ -571,6 +576,7 @@ end)
 RegisterNetEvent(resourceName .. ":server:deletePatrol", function(id)
     local src = source
     if not CheckAuth(src) then return end
+    if not CheckPermission(src, 'map_patrols_edit') then return end
     if not isValidPatrolId(id) then return end
     if not patrols[id] then return end
     if not patrolDomainOK(src, patrols[id]) then return end
@@ -600,6 +606,7 @@ end)
 RegisterNetEvent(resourceName .. ":server:renamePatrol", function(id, newName)
     local src = source
     if not CheckAuth(src) then return end
+    if not CheckPermission(src, 'map_patrols_edit') then return end
     if not isValidPatrolId(id) or not isValidName(newName) then return end
     if not patrols[id] then return end
     if not patrolDomainOK(src, patrols[id]) then return end
@@ -622,6 +629,7 @@ end)
 RegisterNetEvent(resourceName .. ":server:setPatrolZone", function(id, points)
     local src = source
     if not CheckAuth(src) then return end
+    if not CheckPermission(src, 'map_patrols_edit') then return end
     if not isValidPatrolId(id) then return end
     if not patrols[id] then return end
     if not patrolDomainOK(src, patrols[id]) then return end
@@ -652,6 +660,7 @@ end)
 RegisterNetEvent(resourceName .. ":server:reorderPatrols", function(ids)
     local src = source
     if not CheckAuth(src) then return end
+    if not CheckPermission(src, 'map_patrols_edit') then return end
     if type(ids) ~= "table" then return end
 
     local seen = {}
@@ -687,6 +696,7 @@ end)
 RegisterNetEvent(resourceName .. ":server:assignOfficer", function(patrolId, citizenId)
     local src = source
     if not CheckAuth(src) then return end
+    if not CheckPermission(src, 'map_patrols_manage') then return end
     if not isValidPatrolId(patrolId) or not isValidCitizenId(citizenId) then return end
     if not patrols[patrolId] then return end
     if not patrolDomainOK(src, patrols[patrolId]) then return end
@@ -718,6 +728,7 @@ end)
 RegisterNetEvent(resourceName .. ":server:removeFromPatrol", function(citizenId)
     local src = source
     if not CheckAuth(src) then return end
+    if not CheckPermission(src, 'map_patrols_manage') then return end
     if not isValidCitizenId(citizenId) then return end
 
     -- Find which patrol the officer belongs to BEFORE removal (for the audit log)
