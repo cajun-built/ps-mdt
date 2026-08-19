@@ -56,7 +56,11 @@ export function createEvidenceService() {
 
 		try {
 		const base64 = await compressImage(file);
-		const response = await fetchNui(
+		const response = await fetchNui<{
+			success: boolean;
+			url?: string;
+			imageUrl?: string;
+		}>(
 			NUI_EVENTS.EVIDENCE.ADD_EVIDENCE_IMAGE,
 			{
 				evidenceId: Number(evidenceId),
@@ -73,9 +77,10 @@ export function createEvidenceService() {
 			},
 		);
 
-		if (response.success) {
+		const uploadedUrl = response.url || response.imageUrl;
+		if (response.success && uploadedUrl) {
 			state.uploadProgress = 100;
-			return response.url || response.imageUrl;
+			return uploadedUrl;
 		}
 		throw new Error("Upload failed");
 		} catch (error) {
@@ -132,7 +137,7 @@ export function createEvidenceService() {
 	}
 
 	async function transferEvidenceItem(evidenceId: number, toCitizenId: string, notes?: string) {
-		return fetchNui<{ success: boolean }>(
+		return fetchNui<{ success: boolean; error?: string; message?: string }>(
 			NUI_EVENTS.EVIDENCE.TRANSFER_EVIDENCE_ITEM,
 			{ evidenceId, toCitizenId, notes },
 			{ success: true },

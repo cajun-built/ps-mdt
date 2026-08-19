@@ -410,7 +410,7 @@
 	let pointsDraft = $state(0);
 	let pointsSaving = $state(false);
 
-	let savedPoints = $derived<number>(selectedVehicle?.points ?? 0);
+	let savedPoints = $derived.by(() => selectedVehicle ? selectedVehicle.points ?? 0 : 0);
 	let pointsDirty = $derived<boolean>(pointsDraft !== savedPoints);
 	let pointsDelta = $derived<number>(pointsDraft - savedPoints);
 

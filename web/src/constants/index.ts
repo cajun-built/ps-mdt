@@ -75,7 +75,7 @@ export interface NavGroup {
 	id: string;
 	label?: string;
 	icon?: string;
-	tabs: readonly string[];
+	tabs: readonly MDTTab[];
 }
 
 export const NAV_GROUPS: NavGroup[] = [

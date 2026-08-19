@@ -1,5 +1,4 @@
 <script lang="ts">
-	import type { OFFICER_TYPES, VICTIM_TYPES } from "../../constants";
 	import type { Snippet } from "svelte";
 	interface Props {
 		id: string;
@@ -7,7 +6,7 @@
 		secondaryInfo: string;
 		notes?: string;
 		type?: string;
-		typeOptions?: typeof VICTIM_TYPES | typeof OFFICER_TYPES;
+		typeOptions?: readonly string[] | Readonly<Record<string, string>>;
 		onRemove: (id: string) => void;
 		onUpdate: (id: string, field: string, value: any) => void;
 		actions?: Snippet;
@@ -24,6 +23,14 @@
 		onUpdate,
 		actions,
 	}: Props = $props();
+
+	let normalizedTypeOptions = $derived(
+		typeOptions
+			? Array.isArray(typeOptions)
+				? typeOptions
+				: Object.values(typeOptions)
+			: [],
+	);
 </script>
 
 <div class="person-card">
@@ -45,13 +52,13 @@
 		</button>
 	</div>
 	<div class="card-details">
-		{#if type && typeOptions && typeOptions.length > 0}
+		{#if type && normalizedTypeOptions.length > 0}
 			<select
 				value={type}
 				onchange={(e) => onUpdate(id, "type", e.currentTarget.value)}
 				class="detail-select"
 			>
-				{#each typeOptions as option}
+				{#each normalizedTypeOptions as option}
 					<option value={option}>{option}</option>
 				{/each}
 			</select>

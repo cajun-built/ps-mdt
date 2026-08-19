@@ -991,7 +991,7 @@
 
         const patrol  = getOfficerPatrol(citizenid);
         const color   = patrol?.color ?? "#38bdf8";
-        const latlng  = toMapLatLng(officer.coords) as L.LatLng;
+        const latlng = L.latLng(toMapLatLng(officer.coords));
 
         if (highlightMarker) {
             // Reposition existing marker
@@ -1069,7 +1069,7 @@
     const CALIB_OX = 2.47;
     const CALIB_OY = 7.61;
 
-    function toMapLatLng(coords: { x: number; y: number }) {
+    function toMapLatLng(coords: { x: number; y: number }): L.LatLngTuple {
         return [CALIB_SY * coords.y + CALIB_OY, CALIB_SX * coords.x + CALIB_OX];
     }
     function toGtaCoords(latlng: L.LatLng): GtaPoint {
@@ -1138,7 +1138,7 @@
 
     function renderZone(patrol: Patrol) {
         if (!map || !patrol.zonePoints || patrol.zonePoints.length < 3) return;
-        const latlngs = patrol.zonePoints.map(pt => toMapLatLng(pt) as L.LatLng);
+        const latlngs = patrol.zonePoints.map(pt => L.latLng(toMapLatLng(pt)));
         const poly = L.polygon(latlngs, {
             color: patrol.color, weight: 2.5, opacity: 0.9,
             fillColor: patrol.color, fillOpacity: 0.1,

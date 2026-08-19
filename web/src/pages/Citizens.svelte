@@ -8,6 +8,7 @@
 	import { openReportInEditor } from "../stores/reportsStore";
 	import type { createTabService } from "../services/tabService.svelte";
 	import { globalNotifications } from "../services/notificationService.svelte";
+	import { compressImage } from "../services/uploadService";
 	import { openBoloDetail } from "../stores/navigationStore";
 	import Pagination from "../components/Pagination.svelte";
 
@@ -96,7 +97,7 @@
 			vehicle: string;
 		}>;
 		propertiesList?: Array<{
-			id: number;
+			id?: number;
 			property_name: string;
 		}>;
 		tags?: string[];
@@ -108,9 +109,8 @@
 	let { tabService, jobType = 'leo', authService }: { tabService: ReturnType<typeof createTabService>; jobType?: JobType; authService?: AuthService } =
 		$props();
 
-	let canManageLicenses = $derived(!isEMS && (authService?.hasPermission('citizens_edit_licenses') ?? true));
-
 	const isEMS = $derived(jobType === 'ems');
+	let canManageLicenses = $derived(!isEMS && (authService?.hasPermission('citizens_edit_licenses') ?? true));
 	let searchQuery = $state("");
 	let citizens: Citizen[] = $state([]);
 	let loading = $state(true);
@@ -354,8 +354,8 @@
 		return formatDate(raw, "Unknown");
 	}
 
-	let hasActiveWarrants = $derived((selectedProfile?.activeWarrants?.length ?? 0) > 0);
-	let hasActiveBolos = $derived((selectedProfile?.activeBolos?.length ?? 0) > 0);
+	let hasActiveWarrants = $derived.by(() => selectedProfile ? (selectedProfile.activeWarrants?.length ?? 0) > 0 : false);
+	let hasActiveBolos = $derived.by(() => selectedProfile ? (selectedProfile.activeBolos?.length ?? 0) > 0 : false);
 
 	// Fingerprint editing
 	let editingFingerprint = $state(false);
@@ -811,7 +811,7 @@
 		vehicleDetail = null;
 	}
 
-	async function openPropertyFromProfile(propertyId: number, propertyName: string) {
+	async function openPropertyFromProfile(propertyId: number | undefined, propertyName: string) {
 		if (!propertyId) return;
 		propertyDetailLoading = true;
 		propertyDetail = null;

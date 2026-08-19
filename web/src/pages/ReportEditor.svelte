@@ -247,13 +247,9 @@
 	function stripDataUrlsFromReport(r: Report): Report {
 		return {
 			...r,
-			evidence: r.evidence.map((e) => ({
+				evidence: r.evidence.map((e) => ({
 				...e,
-				images: e.images.filter((img) =>
-					typeof img === "string"
-						? !img.startsWith("data:")
-						: !img.url?.startsWith("data:")
-				),
+				images: e.images.filter((img) => !img.startsWith("data:")),
 			})),
 		};
 	}
@@ -596,7 +592,7 @@
 		try {
 			const suspectCharges = report.charges
 				.filter((c) => c.citizenid === suspect.citizenid)
-				.map((c) => c.charge || c.title || 'Unknown Charge');
+				.map((c) => c.charge || 'Unknown Charge');
 
 			const payload = {
 				citizenid: suspect.citizenid,
@@ -1030,7 +1026,6 @@
 					onLinkEvidenceCase={linkEvidenceToCase}
 					onCreateCaseFromEvidence={createCaseForEvidence}
 					onNavigateToCases={tabService ? () => navigateTo("Cases") : undefined}
-					onNavigateToEvidence={tabService ? () => navigateTo("Evidence") : undefined}
 				/>
 			{/if}
 			</div>
@@ -1129,7 +1124,7 @@
 				<label class="bw-label">Charges</label>
 				<div class="bw-charges">
 					{#each report.charges.filter(c => c.citizenid === benchWarrantModal.suspect?.citizenid) as charge}
-						<span class="bw-charge-chip">{charge.charge || charge.title || 'Unknown'} {charge.count > 1 ? `x${charge.count}` : ''}</span>
+						<span class="bw-charge-chip">{charge.charge || 'Unknown'} {charge.count > 1 ? `x${charge.count}` : ''}</span>
 					{:else}
 						<span class="bw-no-charges">No charges for this suspect</span>
 					{/each}
