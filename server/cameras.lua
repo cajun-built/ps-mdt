@@ -1454,6 +1454,7 @@ ps.registerCallback(resourceName .. ':server:getServerTime', function(source)
 end)
 
 ps.registerCallback(resourceName .. ':server:getCameraModels', function(source)
+    if not CheckAuth(source) then return {} end
     local models = {}
     for key, hash in pairs(Camera.models) do
         -- Format the label nicely
@@ -1477,6 +1478,7 @@ end)
 
 -- Callback to validate camera model
 ps.registerCallback(resourceName .. ':server:validateCameraModel', function(source, modelKey)
+    if not CheckAuth(source) then return false end
     local isValid = Camera.models[modelKey] ~= nil
     ps.debug('Validating camera model "' .. tostring(modelKey) .. '" for client ' .. source .. ': ' .. tostring(isValid))
     return isValid
