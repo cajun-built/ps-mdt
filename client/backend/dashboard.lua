@@ -249,32 +249,6 @@ RegisterNUICallback('deleteBulletin', function(data, cb)
     cb(result or { success = false })
 end)
 
-RegisterNUICallback('getBulletinCategories', function(_, cb)
-    local result = ps.callback(resourceName .. ':server:getBulletinCategories', false)
-    cb(result or {})
-end)
-
-RegisterNUICallback('saveBulletinCategories', function(data, cb)
-    if not data or not data.categories then
-        cb({ success = false, message = 'Invalid data' })
-        return
-    end
- 
-    for _, cat in ipairs(data.categories) do
-        if type(cat.value) ~= 'string' or type(cat.label) ~= 'string' or type(cat.icon) ~= 'string' then
-            cb({ success = false, message = 'Malformed category entry' })
-            return
-        end
-        if #cat.label > 32 or #cat.icon > 48 then
-            cb({ success = false, message = 'Category label or icon name too long' })
-            return
-        end
-    end
- 
-    local result = ps.callback('mdt:server:saveBulletinCategories', false, data.categories)
-    cb(result or { success = false, message = 'Server error' })
-end)
-
 -- RECENT REPORTS -------------------------------------
 
 RegisterNUICallback('getRecentReports', function(data, cb)
