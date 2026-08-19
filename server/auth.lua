@@ -296,35 +296,53 @@ local function SendDutyLog(officerName, citizenid, action, jobName)
     })
 end
 
-RegisterNetEvent('ps-mdt:server:trackLogin', function()
-    local src = source
+local activeMdtSessions = {}
+
+local function beginTrackedMdtSession(src)
+    if activeMdtSessions[src] or not CheckAuth(src) then return false end
+    activeMdtSessions[src] = true
     upsertProfileSession(src, 'login')
     if ps.auditLog then
         ps.auditLog(src, 'mdt_login', 'profile', ps.getIdentifier(src), {})
     end
-    -- FiveManage duty log
-    local officerName = ps.getPlayerName(src) or 'Unknown'
-    local citizenid = ps.getIdentifier(src) or 'N/A'
-    local jobName = ps.getJobName(src) or 'Unknown'
-    SendDutyLog(officerName, citizenid, 'login', jobName)
-end)
+    SendDutyLog(
+        ps.getPlayerName(src) or 'Unknown',
+        ps.getIdentifier(src) or 'N/A',
+        'login',
+        ps.getJobName(src) or 'Unknown'
+    )
+    return true
+end
 
-RegisterNetEvent('ps-mdt:server:trackLogout', function()
-    local src = source
+local function endTrackedMdtSession(src)
+    if not activeMdtSessions[src] then return false end
+    activeMdtSessions[src] = nil
     upsertProfileSession(src, 'logout')
     if ps.auditLog then
         ps.auditLog(src, 'mdt_logout', 'profile', ps.getIdentifier(src), {})
     end
-    -- FiveManage duty log
-    local officerName = ps.getPlayerName(src) or 'Unknown'
-    local citizenid = ps.getIdentifier(src) or 'N/A'
-    local jobName = ps.getJobName(src) or 'Unknown'
-    SendDutyLog(officerName, citizenid, 'logout', jobName)
+    SendDutyLog(
+        ps.getPlayerName(src) or 'Unknown',
+        ps.getIdentifier(src) or 'N/A',
+        'logout',
+        ps.getJobName(src) or 'Unknown'
+    )
+    return true
+end
+
+RegisterNetEvent('ps-mdt:server:trackLogin', function()
+    local src = source
+    beginTrackedMdtSession(src)
+end)
+
+RegisterNetEvent('ps-mdt:server:trackLogout', function()
+    local src = source
+    endTrackedMdtSession(src)
 end)
 
 AddEventHandler('playerDropped', function()
     local src = source
-    upsertProfileSession(src, 'logout')
+    endTrackedMdtSession(src)
 end)
 
 ps.registerCallback(tostring(GetCurrentResourceName())..':server:checkAuth', function(source)
@@ -433,6 +451,11 @@ ps.registerCallback(tostring(GetCurrentResourceName())..':server:setLeoDuty', fu
         return { success = false, reason = 'service_unavailable' }
     end
     if success == true then
+        if onDuty == true then
+            beginTrackedMdtSession(source)
+        else
+            endTrackedMdtSession(source)
+        end
         return { success = true, reason = nil, data = result }
     end
     return { success = false, reason = result, data = nil }
