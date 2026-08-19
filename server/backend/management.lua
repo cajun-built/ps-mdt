@@ -83,11 +83,18 @@ local function getAllPermissions()
     }
 end
 
-local function normalizePermissionList(list)
+local function normalizePermissionList(list, restrictKnown)
     local result = {}
     local seen = {}
+    local allowed = nil
+    if restrictKnown then
+        allowed = {}
+        for _, permission in ipairs(getAllPermissions()) do
+            allowed[permission] = true
+        end
+    end
     for _, perm in ipairs(list or {}) do
-        if perm and not seen[perm] then
+        if type(perm) == 'string' and not seen[perm] and (not allowed or allowed[perm]) then
             seen[perm] = true
             result[#result + 1] = perm
         end
@@ -112,23 +119,9 @@ end
 ps.registerCallback(resourceName .. ':server:getPermissionRoles', function(source)
     local src = source
     if not CheckAuth(src) then return {} end
+    if not CheckPermission(src, 'management_permissions') then return {} end
 
     local jobName, job = getPoliceJobDefinition(src)
-    local hasBossAccess = false
-    if ps and ps.getJobData then
-        local jobData = ps.getJobData(src)
-        if jobData and jobData.grade then
-            if type(jobData.grade) == 'table' then
-                hasBossAccess = jobData.grade.isboss == true or jobData.grade.isBoss == true or jobData.grade.boss == true
-            else
-                local grades = job and job.grades and normalizeGrades(job.grades) or nil
-                if grades then
-                    local gradeData = grades[tostring(jobData.grade)]
-                    hasBossAccess = isBossGrade(gradeData)
-                end
-            end
-        end
-    end
     ps.debug('[getPermissionRoles] jobName', jobName, 'job', job and job.label or 'nil')
     if not job or not job.grades then
         ps.debug('[getPermissionRoles] no job grades, using fallback')
@@ -167,7 +160,7 @@ ps.registerCallback(resourceName .. ':server:getPermissionRoles', function(sourc
     end
     ps.debug('[getPermissionRoles] grade count', gradeCount)
     for gradeKeyString, gradeData in pairs(grades) do
-        local isBoss = hasBossAccess or isBossGrade(gradeData)
+        local isBoss = isBossGrade(gradeData)
         local permissions = storedByGrade[gradeKeyString]
         if not permissions or #permissions == 0 then
             permissions = getDefaultRolePermissions(jobName, gradeKeyString, isBoss)
@@ -234,21 +227,23 @@ ps.registerCallback(resourceName .. ':server:updatePermissionRole', function(sou
     end
 
     payload = payload or {}
-    if not payload.job or payload.grade == nil or type(payload.permissions) ~= 'table' then
+    if payload.grade == nil or type(payload.permissions) ~= 'table' then
         return { success = false, message = 'Invalid payload' }
     end
 
     local jobName, job = getPoliceJobDefinition(src)
-    local isBoss = false
-    if job and job.grades then
-        local grades = normalizeGrades(job.grades)
-        local gradeData = grades[tostring(payload.grade)]
-        if gradeData then
-            isBoss = isBossGrade(gradeData)
-        end
+    if not job or not job.grades then
+        return { success = false, message = 'Job grades are unavailable' }
     end
+    local isBoss = false
+    local grades = normalizeGrades(job.grades)
+    local gradeData = grades[tostring(payload.grade)]
+    if not gradeData then
+        return { success = false, message = 'Invalid grade for this agency' }
+    end
+    isBoss = isBossGrade(gradeData)
 
-    local permissions = normalizePermissionList(payload.permissions)
+    local permissions = normalizePermissionList(payload.permissions, true)
     if isBoss then
         permissions = normalizePermissionList(getAllPermissions())
     end
@@ -258,7 +253,15 @@ ps.registerCallback(resourceName .. ':server:updatePermissionRole', function(sou
         INSERT INTO mdt_permission_roles (job, grade, permissions, updated_by)
         VALUES (?, ?, ?, ?)
         ON DUPLICATE KEY UPDATE permissions = VALUES(permissions), updated_by = VALUES(updated_by)
-    ]], { payload.job, tonumber(payload.grade), json.encode(permissions), updatedBy })
+    ]], { jobName, tonumber(payload.grade), json.encode(permissions), updatedBy })
+
+    if ps.auditLog then
+        ps.auditLog(src, 'permission_role_updated', 'permission_role', jobName .. ':' .. tostring(payload.grade), {
+            job = jobName,
+            grade = tonumber(payload.grade),
+            permissions = permissions,
+        })
+    end
 
     return { success = true }
 end)
@@ -266,32 +269,19 @@ end)
 ps.registerCallback(resourceName .. ':server:getTags', function(source, data)
     local src = source
     if not CheckAuth(src) then return {} end
+    if not CheckPermission(src, 'management_tags') then return {} end
 
-    data = data or {}
-    local jobType = data.jobType
-
-    local query, params
-    -- EMS management only sees its own + shared tags; LEO/management sees all.
-    if jobType == 'ems' then
-        query = [[
-            SELECT t.id, t.name, t.type, t.color, t.job_type, t.description, t.created_at,
-                   (SELECT COUNT(*) FROM mdt_profiles_tags pt WHERE pt.tag = t.name) +
-                   (SELECT COUNT(*) FROM mdt_reports_tags rt WHERE rt.tag = t.name) AS usage_count
-            FROM mdt_tags t
-            WHERE t.job_type = 'ems' OR t.job_type = 'all'
-            ORDER BY t.type ASC, t.name ASC
-        ]]
-        params = { }
-    else
-        query = [[
-            SELECT t.id, t.name, t.type, t.color, t.job_type, t.description, t.created_at,
-                   (SELECT COUNT(*) FROM mdt_profiles_tags pt WHERE pt.tag = t.name) +
-                   (SELECT COUNT(*) FROM mdt_reports_tags rt WHERE rt.tag = t.name) AS usage_count
-            FROM mdt_tags t
-            ORDER BY t.type ASC, t.name ASC
-        ]]
-        params = {}
-    end
+    local domain = GetMdtDomain(src)
+    local jobType = domain == 'ems' and 'ems' or 'leo'
+    local query = [[
+        SELECT t.id, t.name, t.type, t.color, t.job_type, t.description, t.created_at,
+               (SELECT COUNT(*) FROM mdt_profiles_tags pt WHERE pt.tag = t.name) +
+               (SELECT COUNT(*) FROM mdt_reports_tags rt WHERE rt.tag = t.name) AS usage_count
+        FROM mdt_tags t
+        WHERE t.job_type = ? OR t.job_type = 'all'
+        ORDER BY t.type ASC, t.name ASC
+    ]]
+    local params = { jobType }
 
     local rows = MySQL.query.await(query, params)
     return rows or {}
@@ -300,9 +290,19 @@ end)
 local VALID_TAG_TYPES = { report = true, officer = true, citizen = true }
 local VALID_TAG_JOBS = { leo = true, ems = true, all = true }
 
+local function canManageTagJob(src, jobType)
+    if not VALID_TAG_JOBS[jobType] then return false end
+    local domain = GetMdtDomain(src)
+    local ownJobType = domain == 'ems' and 'ems' or 'leo'
+    return jobType == ownJobType or jobType == 'all'
+end
+
 ps.registerCallback(resourceName .. ':server:createTag', function(source, payload)
     local src = source
     if not CheckAuth(src) then return { success = false, message = 'Unauthorized' } end
+    if not CheckPermission(src, 'management_tags') then
+        return { success = false, message = 'Insufficient permissions' }
+    end
 
     payload = payload or {}
     local name = payload.name
@@ -311,7 +311,9 @@ ps.registerCallback(resourceName .. ':server:createTag', function(source, payloa
     local jobType = payload.job_type or 'all'
 
     if not VALID_TAG_TYPES[tagType] then tagType = 'citizen' end
-    if not VALID_TAG_JOBS[jobType] then jobType = 'all' end
+    if not canManageTagJob(src, jobType) then
+        return { success = false, message = 'Invalid tag scope' }
+    end
 
     if not name or name == '' then
         return { success = false, message = 'Tag name is required' }
@@ -337,16 +339,18 @@ end)
 ps.registerCallback(resourceName .. ':server:updateTag', function(source, payload)
     local src = source
     if not CheckAuth(src) then return { success = false, message = 'Unauthorized' } end
+    if not CheckPermission(src, 'management_tags') then
+        return { success = false, message = 'Insufficient permissions' }
+    end
 
     payload = payload or {}
     local id = tonumber(payload.id)
     local name = payload.name
     local tagType = payload.type
     local color = payload.color
-    local jobType = payload.job_type or 'all'
+    local jobType = payload.job_type
 
     if tagType and not VALID_TAG_TYPES[tagType] then tagType = 'citizen' end
-    if not VALID_TAG_JOBS[jobType] then jobType = 'all' end
 
     if not id then
         return { success = false, message = 'Invalid tag ID' }
@@ -359,8 +363,18 @@ ps.registerCallback(resourceName .. ':server:updateTag', function(source, payloa
     end
 
     -- Get old name to update references
-    local oldRow = MySQL.query.await('SELECT name FROM mdt_tags WHERE id = ?', { id })
-    local oldName = oldRow and oldRow[1] and oldRow[1].name
+    local oldRow = MySQL.single.await('SELECT name, job_type FROM mdt_tags WHERE id = ?', { id })
+    if not oldRow then
+        return { success = false, message = 'Tag not found' }
+    end
+    if not canManageTagJob(src, oldRow.job_type) then
+        return { success = false, message = 'Tag belongs to another service' }
+    end
+    jobType = jobType or oldRow.job_type
+    if not canManageTagJob(src, jobType) then
+        return { success = false, message = 'Invalid tag scope' }
+    end
+    local oldName = oldRow.name
 
     -- Check duplicate (excluding self)
     local dup = MySQL.scalar.await('SELECT id FROM mdt_tags WHERE name = ? AND id != ?', { name, id })
@@ -455,6 +469,9 @@ end)
 ps.registerCallback(resourceName .. ':server:deleteAward', function(source, payload)
     local src = source
     if not CheckAuth(src) then return { success = false, message = 'Unauthorized' } end
+    if not CheckPermission(src, 'management_permissions') then
+        return { success = false, message = 'Insufficient permissions' }
+    end
 
     payload = payload or {}
     local id = tonumber(payload.id)
@@ -671,6 +688,9 @@ end)
 ps.registerCallback(resourceName .. ':server:saveCustomLicense', function(source, payload)
     local src = source
     if not CheckAuth(src) then return { success = false, message = 'Unauthorized' } end
+    if not CheckPermission(src, 'management_settings') then
+        return { success = false, message = 'Insufficient permissions' }
+    end
 
     payload = payload or {}
     local name = payload.name
@@ -708,6 +728,9 @@ end)
 ps.registerCallback(resourceName .. ':server:deleteCustomLicense', function(source, payload)
     local src = source
     if not CheckAuth(src) then return { success = false, message = 'Unauthorized' } end
+    if not CheckPermission(src, 'management_settings') then
+        return { success = false, message = 'Insufficient permissions' }
+    end
 
     payload = payload or {}
     local id = tonumber(payload.id)
@@ -722,6 +745,9 @@ end)
 ps.registerCallback(resourceName .. ':server:deleteTag', function(source, payload)
     local src = source
     if not CheckAuth(src) then return { success = false, message = 'Unauthorized' } end
+    if not CheckPermission(src, 'management_tags') then
+        return { success = false, message = 'Insufficient permissions' }
+    end
 
     payload = payload or {}
     local id = tonumber(payload.id)
@@ -730,8 +756,14 @@ ps.registerCallback(resourceName .. ':server:deleteTag', function(source, payloa
     end
 
     -- Get name before deleting so we can clean up references
-    local row = MySQL.query.await('SELECT name FROM mdt_tags WHERE id = ?', { id })
-    local tagName = row and row[1] and row[1].name
+    local row = MySQL.single.await('SELECT name, job_type FROM mdt_tags WHERE id = ?', { id })
+    if not row then
+        return { success = false, message = 'Tag not found' }
+    end
+    if not canManageTagJob(src, row.job_type) then
+        return { success = false, message = 'Tag belongs to another service' }
+    end
+    local tagName = row.name
 
     MySQL.query.await('DELETE FROM mdt_tags WHERE id = ?', { id })
 
