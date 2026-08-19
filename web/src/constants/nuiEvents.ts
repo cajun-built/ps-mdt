@@ -291,6 +291,8 @@ export const NUI_EVENTS = {
         RENAME_PATROL:      "renamePatrol",
         ASSIGN_OFFICER:     "assignOfficer",
         REMOVE_FROM_PATROL: "removeFromPatrol",
+        JOIN_PATROL:        "joinPatrol",
+        LEAVE_PATROL:       "leavePatrol",
 		SAVE_UI_STATE: "saveMapUiState",
 		REORDER_PATROLS: "reorderPatrols",
 		SET_PATROL_ZONE: "setPatrolZone",

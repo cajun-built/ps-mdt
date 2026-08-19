@@ -323,6 +323,19 @@ RegisterNUICallback("removeFromPatrol", function(data, cb)
     cb({ success = true })
 end)
 
+RegisterNUICallback('joinPatrol', function(data, cb)
+    if not MDTOpen then cb({ success = false }) return end
+    if type(data.id) ~= 'string' then cb({ success = false }) return end
+    TriggerServerEvent(resourceName .. ':server:joinPatrol', data.id)
+    cb({ success = true })
+end)
+
+RegisterNUICallback('leavePatrol', function(_, cb)
+    if not MDTOpen then cb({ success = false }) return end
+    TriggerServerEvent(resourceName .. ':server:leavePatrol')
+    cb({ success = true })
+end)
+
 -- ─── Cleanup ──────────────────────────────────────────────────────────────
 
 AddEventHandler("onResourceStop", function(res)

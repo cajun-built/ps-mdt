@@ -51,6 +51,7 @@
     let canViewPatrols   = $derived(authService ? (authService.hasPermission("map_patrols_view")   ?? true) : true);
     let canManagePatrols = $derived(authService ? (authService.hasPermission("map_patrols_manage") ?? true) : true);
     let canEditPatrols   = $derived(authService ? (authService.hasPermission("map_patrols_edit")   ?? true) : true);
+    let canSelfPatrol    = $derived(authService ? (authService.hasPermission("dispatch_attach") ?? false) : true);
     // EMS see their own units/zones; the live-position layer isn't bodycam-based for them.
     let isEms            = $derived(authService?.jobType === "ems");
 
@@ -120,6 +121,10 @@
         color: string;
         memberIds: string[];
         zonePoints?: GtaPoint[] | null;
+        agency?: string;
+        leaderCitizenid?: string | null;
+        status?: string;
+        callId?: string | number | null;
     };
 
     let officers        = $state<Bodycam[]>([]);
@@ -393,7 +398,7 @@
         const attached = attachedIds(selectedDispatch);
         const ids = p.memberIds.filter(cid => officers.some(o => o.citizenid === cid) && !attached.has(cid));
         if (ids.length === 0) { globalNotifications.error("No online members left to assign"); return; }
-        assignUnits(ids, "attach");
+        assignUnits([ids[0]], "attach");
     }
 
     // ═══ Create Call modal ═══
@@ -696,10 +701,12 @@
     // who never set a status is treated as.
     type StatusDef = { id: string; label: string; color: string; icon?: string };
     let statusDefs    = $state<StatusDef[]>([
-        { id: "active", label: "Active", color: "#22C55E", icon: "●" },
-        { id: "busy",   label: "Busy",   color: "#F59E0B", icon: "●" },
+        { id: "available", label: "Available", color: "#22C55E", icon: "●" },
+        { id: "busy", label: "Busy", color: "#F59E0B", icon: "●" },
+        { id: "transporting", label: "Transporting", color: "#3B82F6", icon: "●" },
+        { id: "out_of_service", label: "Out of Service", color: "#EF4444", icon: "●" },
     ]);
-    let defaultStatusId = $state("active");
+    let defaultStatusId = $state("available");
     let statusById = $derived(new globalThis.Map(statusDefs.map(s => [s.id, s] as [string, StatusDef])));
 
     function statusDef(id?: string): StatusDef {
@@ -729,7 +736,7 @@
     // Initialized with a plain literal (not defaultStatusId) to avoid a
     // state-reads-its-own-scope warning; loadStatusConfig()/refreshTracking()
     // overwrite it with the real value almost immediately after mount anyway.
-    let myStatusId   = $state<string>("active");
+    let myStatusId   = $state<string>("available");
     let myStatusNote = $state<string>("");
     let statusPickerOpen = $state(false);
     let statusNoteDraft  = $state("");
@@ -818,6 +825,7 @@
     let centeredOnSelf = false;
     // Own citizenId sent from Lua on open
     let ownCitizenId = $state<string | null>(null);
+    let myPatrol = $derived(ownCitizenId ? patrols.find(p => p.memberIds.includes(ownCitizenId!)) ?? null : null);
     let isSelfAttached = $derived(
         !!(selectedDispatch && ownCitizenId && attachedIds(selectedDispatch).has(ownCitizenId))
     );
@@ -1502,6 +1510,7 @@
     function getPatrolStatus(patrol: Patrol): StatusDef | undefined {
         const members = officers.filter(o => patrol.memberIds.includes(o.citizenid));
         if (members.length === 0) return undefined;
+        if (patrol.status) return statusDef(patrol.status);
 
         const memberStatusIds = new Set(members.map(o => o.status ?? defaultStatusId));
         // Walk the configured list in order (skipping the default) so the
@@ -1984,6 +1993,26 @@
         try {
             await fetchNui(NUI_EVENTS.MAP.REMOVE_FROM_PATROL, { citizenId: officerId }, { success: true });
         } catch { }
+    }
+
+    async function joinPatrol(id: string) {
+        if (myPatrol) {
+            globalNotifications.error(`Leave ${myPatrol.name} before joining another unit`);
+            return;
+        }
+        try {
+            await fetchNui(NUI_EVENTS.MAP.JOIN_PATROL, { id }, { success: true });
+        } catch {
+            globalNotifications.error("Failed to join patrol unit");
+        }
+    }
+
+    async function leavePatrol() {
+        try {
+            await fetchNui(NUI_EVENTS.MAP.LEAVE_PATROL, {}, { success: true });
+        } catch {
+            globalNotifications.error("Failed to leave patrol unit");
+        }
     }
 
     function movePatrol(id: string, dir: -1 | 1) {
@@ -2677,7 +2706,7 @@
                     {#if patrolsOpen}
                         <span class="panel-title">Patrols</span>
                         <span class="tab-badge">{patrols.length}</span>
-                        {#if canEditPatrols}
+                        {#if (canEditPatrols || canSelfPatrol) && !myPatrol}
                             <button class="btn-icon-add" onmousedown={(e) => e.stopPropagation()} onclick={(e) => { e.stopPropagation(); showCreateForm = !showCreateForm; }} type="button" title="New patrol">
                                 <svg width="12" height="12" viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><line x1="6" y1="1" x2="6" y2="11"/><line x1="1" y1="6" x2="11" y2="6"/></svg>
                             </button>
@@ -2689,7 +2718,7 @@
                 </div>
 
                 {#if patrolsOpen}
-                {#if showCreateForm && canEditPatrols}
+                {#if showCreateForm && (canEditPatrols || canSelfPatrol) && !myPatrol}
                     <div class="create-form">
                         <input class="create-input" placeholder="Patrol name…" bind:value={newPatrolName} onkeydown={(e) => e.key === "Enter" && createPatrol()} autofocus />
                         <div class="color-row">
@@ -2726,6 +2755,14 @@
                                 <span class="patrol-count">{patrol.memberIds.length}</span>
                                 {#if pStatus}
                                     <span class="patrol-status-dot" style="background:{pStatus.color}" use:tip={`Patrol status: ${pStatus.label}`}></span>
+                                {/if}
+                                {#if patrol.callId}
+                                    <span class="patrol-call-badge">Call {patrol.callId}</span>
+                                {/if}
+                                {#if canSelfPatrol && ownCitizenId && patrol.memberIds.includes(ownCitizenId)}
+                                    <button class="patrol-membership patrol-membership--leave" onclick={leavePatrol} type="button">Leave</button>
+                                {:else if canSelfPatrol && !myPatrol}
+                                    <button class="patrol-membership" onclick={() => joinPatrol(patrol.id)} type="button">Join</button>
                                 {/if}
                                 {#if canEditPatrols}
                                     <div class="patrol-sort-arrows">
@@ -3654,6 +3691,11 @@
     .patrol-count { font-size: 10px; font-weight: 700; color: rgba(255,255,255,0.22); background: rgba(255,255,255,0.05); border-radius: 10px; padding: 1px 6px; }
     /* Derived patrol status (Patrols panel) — see getPatrolStatus() */
     .patrol-status-dot { width: 7px; height: 7px; border-radius: 50%; flex-shrink: 0; box-shadow: 0 0 5px currentColor; }
+    .patrol-call-badge { font-size: 9px; color: #93c5fd; background: rgba(59,130,246,0.14); border: 1px solid rgba(59,130,246,0.24); border-radius: 8px; padding: 1px 5px; white-space: nowrap; }
+    .patrol-membership { border: 1px solid rgba(56,189,248,0.3); background: rgba(56,189,248,0.12); color: #7dd3fc; border-radius: 5px; padding: 2px 6px; font-size: 9px; font-weight: 700; cursor: pointer; }
+    .patrol-membership:hover { background: rgba(56,189,248,0.22); }
+    .patrol-membership--leave { border-color: rgba(239,68,68,0.3); background: rgba(239,68,68,0.1); color: #fca5a5; }
+    .patrol-membership--leave:hover { background: rgba(239,68,68,0.2); }
     .patrol-delete { background: transparent; border: none; color: rgba(255,255,255,0.18); cursor: pointer; padding: 2px; display: flex; align-items: center; border-radius: 3px; transition: all 0.1s; }
     .patrol-delete:hover { color: #ef4444; background: rgba(239,68,68,0.1); }
     .patrol-sort-handle { font-size: 13px; line-height: 1; color: rgba(255,255,255,0.18); cursor: grab; flex-shrink: 0; padding: 0 2px; }

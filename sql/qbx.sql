@@ -1475,8 +1475,10 @@ CREATE TABLE IF NOT EXISTS `mdt_patrols` (
   `sort_order` int(11) NOT NULL DEFAULT 0,
   `zone_points` longtext DEFAULT NULL,
   `job_type` varchar(10) NOT NULL DEFAULT 'police',
+  `agency` varchar(16) DEFAULT NULL,
   PRIMARY KEY (`id`),
-  KEY `idx_mdt_patrols_job_sort` (`job_type`,`sort_order`)
+  KEY `idx_mdt_patrols_job_sort` (`job_type`,`sort_order`),
+  KEY `idx_mdt_patrols_agency_sort` (`agency`,`sort_order`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 -- ════════════════════════════════════════════════════════════════════════════
@@ -1489,7 +1491,7 @@ CREATE TABLE IF NOT EXISTS `mdt_patrols` (
 -- ════════════════════════════════════════════════════════════════════════════
 CREATE TABLE IF NOT EXISTS `mdt_officer_status` (
   `citizenid` varchar(64) NOT NULL,
-  `status` varchar(32) NOT NULL DEFAULT 'active',
+  `status` varchar(32) NOT NULL DEFAULT 'available',
   `note` varchar(120) DEFAULT NULL,
   `job_type` varchar(10) NOT NULL DEFAULT 'police',
   `updated_at` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,

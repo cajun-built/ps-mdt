@@ -263,6 +263,13 @@ RegisterNetEvent(resourceName .. ':server:setOfficerStatus', function(statusId, 
     local domain = GetMdtDomain(src)
     local previous = officerStatus[officer.citizenid]
 
+    if domain == 'police' and GetResourceState('ps-dispatch') == 'started' then
+        local ok, success = pcall(function()
+            return exports['ps-dispatch']:SetPatrolUnitStatus(src, statusId)
+        end)
+        if not ok or success ~= true then return end
+    end
+
     local entry = {
         status    = statusId,
         note      = cleanNote,

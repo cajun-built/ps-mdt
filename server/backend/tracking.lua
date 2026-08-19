@@ -81,7 +81,11 @@ end
 -- (police/DOJ on one side, EMS on the other).
 local function patrolDomainOK(src, patrol)
     if not patrol then return false end
-    return (patrol.domain or 'police') == GetMdtDomain(src)
+    local domain = GetMdtDomain(src)
+    if (patrol.domain or 'police') ~= domain then return false end
+    if domain ~= 'police' then return true end
+    local ok, context = pcall(function() return exports.cgn_leo_core:GetContext(src) end)
+    return ok and context and patrol.agency == context.agency
 end
 
 -- Validate zone_points: array of {x, y} pairs, max 64 points
@@ -161,9 +165,9 @@ end
 local function savePatrolNow(patrol)
     if not patrol then return end
     MySQL.insert(
-        "INSERT INTO mdt_patrols (id, name, color, member_ids, sort_order, zone_points, job_type) VALUES (?, ?, ?, ?, ?, ?, ?) " ..
+        "INSERT INTO mdt_patrols (id, name, color, member_ids, sort_order, zone_points, job_type, agency) VALUES (?, ?, ?, ?, ?, ?, ?, ?) " ..
         "ON DUPLICATE KEY UPDATE name = VALUES(name), color = VALUES(color), " ..
-        "member_ids = VALUES(member_ids), sort_order = VALUES(sort_order), zone_points = VALUES(zone_points), job_type = VALUES(job_type)",
+        "member_ids = VALUES(member_ids), sort_order = VALUES(sort_order), zone_points = VALUES(zone_points), job_type = VALUES(job_type), agency = VALUES(agency)",
         {
             patrol.id,
             patrol.name,
@@ -172,6 +176,7 @@ local function savePatrolNow(patrol)
             patrol.sortOrder or 0,
             patrol.zonePoints and json.encode(patrol.zonePoints) or nil,
             patrol.domain or 'police',
+            patrol.agency,
         }
     )
 end
@@ -206,21 +211,24 @@ end
 
 local function saveOrder()
     -- Coalesce all sort_order writes into one statement instead of N round-trips.
-    local cases, ids = {}, {}
+    local cases, ids, values = {}, {}, {}
     for i, id in ipairs(patrolOrder) do
         if patrols[id] then
             patrols[id].sortOrder = i
-            cases[#cases + 1] = ('WHEN %d THEN %d'):format(id, i)
+            cases[#cases + 1] = 'WHEN ? THEN ?'
+            values[#values + 1] = id
+            values[#values + 1] = i
             ids[#ids + 1] = id
         end
     end
     if #ids == 0 then return end
     local ph = {}
     for i = 1, #ids do ph[i] = '?' end
+    for _, id in ipairs(ids) do values[#values + 1] = id end
     MySQL.execute(
         ('UPDATE mdt_patrols SET sort_order = CASE id %s END WHERE id IN (%s)')
             :format(table.concat(cases, ' '), table.concat(ph, ',')),
-        ids)
+        values)
 end
 
 -- ─── Broadcast ──────────────────────────────────────────────────────────────
@@ -262,6 +270,55 @@ local function orderedPatrolsForDomain(domain)
     return ordered
 end
 
+local function leoAgency(src)
+    if GetResourceState('cgn_leo_core') ~= 'started' then return nil end
+    local ok, context = pcall(function() return exports.cgn_leo_core:GetContext(src) end)
+    return ok and context and context.agency or nil
+end
+
+local function patrolViewForSource(src)
+    local domain = GetMdtDomain(src)
+    if domain ~= 'police' then return orderedPatrolsForDomain(domain) end
+    local agency = leoAgency(src)
+    if not agency then return {} end
+
+    local runtimeById = {}
+    if GetResourceState('ps-dispatch') == 'started' then
+        local ok, success, _, units = pcall(function()
+            return exports['ps-dispatch']:GetPatrolUnits(src)
+        end)
+        if ok and success == true and type(units) == 'table' then
+            for _, unit in ipairs(units) do runtimeById[unit.id] = unit end
+        end
+    end
+
+    local ordered = {}
+    for _, id in ipairs(patrolOrder) do
+        local patrol = patrols[id]
+        if patrol and (patrol.domain or 'police') == 'police' and patrol.agency == agency then
+            local runtime = runtimeById[id]
+            local memberIds = {}
+            if runtime then
+                for _, member in ipairs(runtime.members or {}) do memberIds[#memberIds + 1] = member.citizenid end
+            end
+            ordered[#ordered + 1] = {
+                id = patrol.id,
+                name = patrol.name,
+                color = patrol.color,
+                memberIds = memberIds,
+                zonePoints = patrol.zonePoints,
+                sortOrder = patrol.sortOrder,
+                domain = patrol.domain,
+                agency = patrol.agency,
+                leaderCitizenid = runtime and runtime.leaderCitizenid or nil,
+                status = runtime and runtime.status or 'available',
+                callId = runtime and runtime.callId or nil,
+            }
+        end
+    end
+    return ordered
+end
+
 -- ─── Tracking dirty push ─────────────────────────────────────────────────────
 -- Lightweight "something moved" signal. On receipt the NUI refetches the
 -- server-cached snapshot, so a burst of changes costs at most one cached fetch
@@ -289,10 +346,9 @@ local function doBroadcast(action, citizenid)
     -- Each domain only receives its own patrols, so EMS never sees police
     -- patrols/zones and vice versa.
     for _, domain in ipairs({ 'police', 'ems' }) do
-        local ordered = orderedPatrolsForDomain(domain)
         local targets = playersInDomain(domain)
         for _, src in ipairs(targets) do
-            TriggerClientEvent(resourceName .. ":client:syncPatrols", src, ordered, action, citizenid)
+            TriggerClientEvent(resourceName .. ":client:syncPatrols", src, patrolViewForSource(src), action, citizenid)
         end
     end
 end
@@ -542,26 +598,45 @@ ps.registerCallback(resourceName .. ":server:getPatrols", function(source)
     local src = source
     if not CheckAuth(src) then return {} end
     if not CheckPermission(src, 'map_patrols_view') then return {} end
-    local domain = GetMdtDomain(src)
-    local ordered = {}
-    for _, id in ipairs(patrolOrder) do
-        local p = patrols[id]
-        if p and (p.domain or 'police') == domain then
-            ordered[#ordered + 1] = p
-        end
-    end
-    return ordered
+    return patrolViewForSource(src)
 end)
 
 RegisterNetEvent(resourceName .. ":server:createPatrol", function(id, name, color)
     local src = source
     if not CheckAuth(src) then return end
-    if not CheckPermission(src, 'map_patrols_edit') then return end
+    local domain = GetMdtDomain(src)
+    local mayEdit = CheckPermission(src, 'map_patrols_edit')
+    local maySelfAssign = domain == 'police' and CheckPermission(src, 'dispatch_attach')
+    if not mayEdit and not maySelfAssign then return end
     if not isValidPatrolId(id) or not isValidName(name) or not isValidColor(color) then return end
     if patrols[id] then return end
 
+    local agency = domain == 'police' and leoAgency(src) or nil
+    if domain == 'police' then
+        if not agency or GetResourceState('ps-dispatch') ~= 'started' then return end
+        local ok, success, reason = pcall(function()
+            return exports['ps-dispatch']:CreatePatrolUnit(src, { id = id, label = name })
+        end)
+        if not ok or success ~= true then
+            TriggerClientEvent('ox_lib:notify', src, {
+                type = 'error',
+                description = ('Unable to create patrol unit: %s'):format(tostring(reason or 'service_unavailable')),
+            })
+            return
+        end
+    end
+
     local sortOrder = #patrolOrder + 1
-    patrols[id] = { id = id, name = name, color = color, memberIds = {}, zonePoints = nil, sortOrder = sortOrder, domain = GetMdtDomain(src) }
+    patrols[id] = {
+        id = id,
+        name = name,
+        color = color,
+        memberIds = {},
+        zonePoints = nil,
+        sortOrder = sortOrder,
+        domain = domain,
+        agency = agency,
+    }
     patrolOrder[#patrolOrder + 1] = id
     broadcastPatrols()
     savePatrolNow(patrols[id]) -- structural change → write immediately
@@ -580,6 +655,14 @@ RegisterNetEvent(resourceName .. ":server:deletePatrol", function(id)
     if not isValidPatrolId(id) then return end
     if not patrols[id] then return end
     if not patrolDomainOK(src, patrols[id]) then return end
+
+    if (patrols[id].domain or 'police') == 'police' then
+        if patrols[id].agency ~= leoAgency(src) then return end
+        local ok, success = pcall(function()
+            return exports['ps-dispatch']:DeletePatrolUnit(src, id)
+        end)
+        if not ok or success ~= true then return end
+    end
 
     -- Capture the name BEFORE removing the entry (previous code read it after
     -- nil-ing patrols[id], so the audit log always showed the raw id).
@@ -610,6 +693,14 @@ RegisterNetEvent(resourceName .. ":server:renamePatrol", function(id, newName)
     if not isValidPatrolId(id) or not isValidName(newName) then return end
     if not patrols[id] then return end
     if not patrolDomainOK(src, patrols[id]) then return end
+
+    if (patrols[id].domain or 'police') == 'police' then
+        if patrols[id].agency ~= leoAgency(src) then return end
+        local ok, success = pcall(function()
+            return exports['ps-dispatch']:RenamePatrolUnit(src, id, newName)
+        end)
+        if not ok or success ~= true then return end
+    end
 
     local oldName = patrols[id].name
     patrols[id].name = newName
@@ -701,6 +792,23 @@ RegisterNetEvent(resourceName .. ":server:assignOfficer", function(patrolId, cit
     if not patrols[patrolId] then return end
     if not patrolDomainOK(src, patrols[patrolId]) then return end
 
+    if (patrols[patrolId].domain or 'police') == 'police' then
+        if patrols[patrolId].agency ~= leoAgency(src) then return end
+        local ok, success = pcall(function()
+            return exports['ps-dispatch']:AssignPatrolMember(src, patrolId, citizenId)
+        end)
+        if not ok or success ~= true then return end
+        local assignedName = getNameByCitizenId(citizenId)
+        broadcastPatrols('assigned', citizenId)
+        auditPatrol(src, 'patrol_officer_assigned', patrolId, {
+            patrol_name = patrols[patrolId].name,
+            assigned_name = assignedName,
+            assigned_id = citizenId,
+            action_label = ('Assigned %s to patrol "%s"'):format(assignedName, patrols[patrolId].name),
+        })
+        return
+    end
+
     -- Remove from any other patrol in the same domain before re-assigning.
     for _, patrol in pairs(patrols) do
         if patrolDomainOK(src, patrol) then
@@ -731,6 +839,19 @@ RegisterNetEvent(resourceName .. ":server:removeFromPatrol", function(citizenId)
     if not CheckPermission(src, 'map_patrols_manage') then return end
     if not isValidCitizenId(citizenId) then return end
 
+    if GetMdtDomain(src) == 'police' then
+        local ok, success = pcall(function()
+            return exports['ps-dispatch']:RemovePatrolMember(src, citizenId)
+        end)
+        if not ok or success ~= true then return end
+        broadcastPatrols('removed', citizenId)
+        auditPatrol(src, 'patrol_officer_removed', citizenId, {
+            removed_id = citizenId,
+            action_label = 'Removed officer from active patrol unit',
+        })
+        return
+    end
+
     -- Find which patrol the officer belongs to BEFORE removal (for the audit log)
     local removedFromPatrol = 'unknown'
     for _, patrol in pairs(patrols) do
@@ -760,6 +881,64 @@ RegisterNetEvent(resourceName .. ":server:removeFromPatrol", function(citizenId)
             action_label = ('Removed officer from patrol "%s"'):format(removedFromPatrol),
         })
     end
+end)
+
+RegisterNetEvent(resourceName .. ':server:joinPatrol', function(patrolId)
+    local src = source
+    if not CheckAuth(src) or not CheckPermission(src, 'dispatch_attach') then return end
+    if not isValidPatrolId(patrolId) or GetMdtDomain(src) ~= 'police' then return end
+    local patrol = patrols[patrolId]
+    if not patrol or patrol.agency ~= leoAgency(src) then return end
+    local ok, success, reason = pcall(function()
+        return exports['ps-dispatch']:JoinPatrolUnit(src, patrolId)
+    end)
+    if ok and success ~= true and reason == 'unit_not_found' then
+        ok, success, reason = pcall(function()
+            return exports['ps-dispatch']:CreatePatrolUnit(src, {
+                id = patrol.id,
+                label = patrol.name,
+            })
+        end)
+    end
+    if not ok or success ~= true then
+        TriggerClientEvent('ox_lib:notify', src, {
+            type = 'error',
+            description = ('Unable to join patrol unit: %s'):format(tostring(reason or 'service_unavailable')),
+        })
+        return
+    end
+    local officer = getOfficerInfo(src)
+    broadcastPatrols('assigned', officer.citizenid)
+    auditPatrol(src, 'patrol_self_joined', patrolId, {
+        patrol_name = patrol.name,
+        action_label = ('Joined patrol "%s"'):format(patrol.name),
+    })
+end)
+
+RegisterNetEvent(resourceName .. ':server:leavePatrol', function()
+    local src = source
+    if not CheckAuth(src) or not CheckPermission(src, 'dispatch_attach') then return end
+    if GetMdtDomain(src) ~= 'police' then return end
+    local officer = getOfficerInfo(src)
+    if not officer or not officer.citizenid then return end
+    local ok, success, reason = pcall(function()
+        return exports['ps-dispatch']:LeavePatrolUnit(src)
+    end)
+    if not ok or success ~= true then
+        TriggerClientEvent('ox_lib:notify', src, {
+            type = 'error',
+            description = ('Unable to leave patrol unit: %s'):format(tostring(reason or 'service_unavailable')),
+        })
+        return
+    end
+    broadcastPatrols('removed', officer.citizenid)
+    auditPatrol(src, 'patrol_self_left', officer.citizenid, {
+        action_label = 'Left active patrol unit',
+    })
+end)
+
+AddEventHandler('ps-dispatch:server:patrolUnitsChanged', function()
+    broadcastPatrols()
 end)
 
 AddEventHandler("playerDropped", function()
@@ -854,6 +1033,7 @@ AddEventHandler("onResourceStart", function(res)
             zonePoints = zonePoints,
             sortOrder = row.sort_order or 0,
             domain = (row.job_type == 'ems') and 'ems' or 'police',
+            agency = row.agency,
         }
         patrolOrder[#patrolOrder + 1] = row.id
     end

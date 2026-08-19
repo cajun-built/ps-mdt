@@ -708,15 +708,17 @@ Config.JailEvents = {
 -- To add a new status, just append a new entry — no other file needs to change.
 Config.OfficerStatus = {
     list = {
-        { id = 'active', label = 'Active', color = '#22C55E', icon = '●' },
-        { id = 'busy',   label = 'Busy',   color = '#F59E0B', icon = '●' },
+        { id = 'available', label = 'Available', color = '#22C55E', icon = '●' },
+        { id = 'busy', label = 'Busy', color = '#F59E0B', icon = '●' },
+        { id = 'transporting', label = 'Transporting', color = '#3B82F6', icon = '●' },
+        { id = 'out_of_service', label = 'Out of Service', color = '#EF4444', icon = '●' },
         -- Examples for future statuses (uncomment / adjust as needed):
         -- { id = 'enroute',   label = 'En Route',   color = '#3B82F6', icon = '●' },
         -- { id = 'unavailable', label = 'Unavailable', color = '#EF4444', icon = '●' },
         -- { id = 'break',     label = 'On Break',    color = '#8B5CF6', icon = '●' },
     },
     -- Status id assumed for any officer who has never set one.
-    Default = 'active',
+    Default = 'available',
     -- Max length for the optional free-text note (e.g. "Traffic Stop").
     MaxNoteLength = 60,
     -- Minimum ms between two status changes from the same player (anti-spam).
