@@ -15,6 +15,9 @@ export interface EvidenceItem {
 	stash_id?: string;
 	stored?: number | boolean;
 	last_holder?: string | null;
+	pending_holder?: string | null;
+	transfer_requested_by?: string | null;
+	transfer_requested_at?: string | null;
 	created_by?: string | null;
 	created_at?: string;
 	updated_at?: string;
@@ -132,6 +135,22 @@ export function createEvidenceService() {
 		return fetchNui<{ success: boolean }>(
 			NUI_EVENTS.EVIDENCE.TRANSFER_EVIDENCE_ITEM,
 			{ evidenceId, toCitizenId, notes },
+			{ success: true },
+		);
+	}
+
+	async function acceptEvidenceTransfer(evidenceId: number, notes?: string) {
+		return fetchNui<{ success: boolean; error?: string; message?: string }>(
+			NUI_EVENTS.EVIDENCE.ACCEPT_EVIDENCE_TRANSFER,
+			{ evidenceId, notes },
+			{ success: true },
+		);
+	}
+
+	async function declineEvidenceTransfer(evidenceId: number, notes?: string) {
+		return fetchNui<{ success: boolean; error?: string; message?: string }>(
+			NUI_EVENTS.EVIDENCE.DECLINE_EVIDENCE_TRANSFER,
+			{ evidenceId, notes },
 			{ success: true },
 		);
 	}
@@ -307,6 +326,8 @@ export function createEvidenceService() {
 		updateEvidenceItem,
 		deleteEvidenceItem,
 		transferEvidenceItem,
+		acceptEvidenceTransfer,
+		declineEvidenceTransfer,
 		getEvidenceCustody,
 		addEvidenceImage,
 		removeEvidenceImage,

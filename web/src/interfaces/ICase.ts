@@ -61,6 +61,9 @@ export interface EvidenceItem {
 	stash_id?: string;
 	stored: number | boolean;
 	last_holder?: string;
+	pending_holder?: string;
+	transfer_requested_by?: string;
+	transfer_requested_at?: string | number;
 	created_by?: string;
 	created_at?: string | number;
 	updated_at?: string | number;

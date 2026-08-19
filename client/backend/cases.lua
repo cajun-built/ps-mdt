@@ -237,6 +237,26 @@ RegisterNUICallback('transferEvidenceItem', function(data, cb)
     cb(result or { success = false })
 end)
 
+RegisterNUICallback('acceptEvidenceTransfer', function(data, cb)
+    if not MDTOpen then
+        cb({ success = false, message = 'MDT is not open' })
+        return
+    end
+
+    local result = ps.callback(resourceName .. ':server:acceptEvidenceTransfer', data.evidenceId, data.notes)
+    cb(result or { success = false })
+end)
+
+RegisterNUICallback('declineEvidenceTransfer', function(data, cb)
+    if not MDTOpen then
+        cb({ success = false, message = 'MDT is not open' })
+        return
+    end
+
+    local result = ps.callback(resourceName .. ':server:declineEvidenceTransfer', data.evidenceId, data.notes)
+    cb(result or { success = false })
+end)
+
 RegisterNUICallback('deleteEvidenceItem', function(data, cb)
     if not MDTOpen then
         cb({ success = false, message = 'MDT is not open' })

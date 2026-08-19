@@ -35,7 +35,9 @@ ps.registerCallback(resourceName .. ':server:getEvidenceItems', function(source,
     listValues[#listValues + 1] = offset
 
     local evidence = MySQL.query.await(([[
-        SELECT id, case_id, report_id, title, type, serial, notes, location, stash_id, stored, last_holder, created_by, created_at, updated_at
+        SELECT id, case_id, report_id, title, type, serial, notes, location, stash_id, stored,
+            last_holder, pending_holder, transfer_requested_by, transfer_requested_at,
+            created_by, created_at, updated_at
         FROM mdt_evidence_items
         WHERE %s
         ORDER BY created_at DESC
@@ -105,7 +107,9 @@ ps.registerCallback(resourceName .. ':server:searchEvidenceItems', function(sour
     local total = totalRow and totalRow.total or 0
 
     local evidence = MySQL.query.await([[
-        SELECT id, case_id, report_id, title, type, serial, notes, location, stash_id, stored, last_holder, created_by, created_at, updated_at
+        SELECT id, case_id, report_id, title, type, serial, notes, location, stash_id, stored,
+            last_holder, pending_holder, transfer_requested_by, transfer_requested_at,
+            created_by, created_at, updated_at
         FROM mdt_evidence_items
         WHERE title LIKE ? OR serial LIKE ? OR notes LIKE ? OR location LIKE ? OR stash_id LIKE ?
         ORDER BY created_at DESC
@@ -321,27 +325,34 @@ ps.registerCallback(resourceName .. ':server:transferEvidenceItem', function(sou
     if not CheckAuth(src) then return { success = false, error = 'Unauthorized' } end
     if not CheckPermission(src, 'evidence_transfer') then return { success = false, error = 'Insufficient permissions' } end
 
-    evidenceId = tonumber(evidenceId)
-    if not evidenceId or not toCitizenId then
-        return { success = false, error = 'Invalid evidence transfer' }
-    end
-
-    local fromCitizenId = ps.getIdentifier(src)
-    MySQL.update.await('UPDATE mdt_evidence_items SET last_holder = ? WHERE id = ?', { toCitizenId, evidenceId })
-
-    MySQL.insert.await([[
-        INSERT INTO mdt_evidence_custody (evidence_id, from_citizenid, to_citizenid, action, notes)
-        VALUES (?, ?, ?, 'transferred', ?)
-    ]], { evidenceId, fromCitizenId, toCitizenId, notes or '' })
-
-    if ps.auditLog then
-        ps.auditLog(src, 'evidence_transferred', 'evidence', evidenceId, {
-            fromCitizenId = fromCitizenId,
-            toCitizenId = toCitizenId
+    local success, message = RequestEvidenceTransfer(src, evidenceId, toCitizenId, notes)
+    if success and ps.auditLog then
+        ps.auditLog(src, 'evidence_transfer_requested', 'evidence', evidenceId, {
+            toCitizenId = toCitizenId,
+            notes = notes
         })
     end
+    return { success = success, error = success and nil or message, message = message }
+end)
 
-    return { success = true }
+ps.registerCallback(resourceName .. ':server:acceptEvidenceTransfer', function(source, evidenceId, notes)
+    local src = source
+    if not CheckAuth(src) then return { success = false, error = 'Unauthorized' } end
+    local success, message = AcceptEvidenceTransfer(src, evidenceId, notes)
+    if success and ps.auditLog then
+        ps.auditLog(src, 'evidence_transfer_accepted', 'evidence', evidenceId, { notes = notes })
+    end
+    return { success = success, error = success and nil or message, message = message }
+end)
+
+ps.registerCallback(resourceName .. ':server:declineEvidenceTransfer', function(source, evidenceId, notes)
+    local src = source
+    if not CheckAuth(src) then return { success = false, error = 'Unauthorized' } end
+    local success, message = DeclineEvidenceTransfer(src, evidenceId, notes)
+    if success and ps.auditLog then
+        ps.auditLog(src, 'evidence_transfer_declined', 'evidence', evidenceId, { notes = notes })
+    end
+    return { success = success, error = success and nil or message, message = message }
 end)
 
 ps.registerCallback(resourceName .. ':server:getEvidenceCustody', function(source, evidenceId)
