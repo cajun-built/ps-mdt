@@ -27,9 +27,6 @@
 	let currentTime = $state(formatTime(new Date()));
 	let currentDate = $state(formatDate(new Date()));
 	let reportOpened: number | null = $state(null);
-	let callsignModalOpen = $state(false);
-	let callsignInput = $state("");
-	let callsignSaving = $state(false);
 	let callsignLoading = $state(true);
 	let localCallsign = $state("");
 	let clockTimer: ReturnType<typeof setInterval> | null = null;
@@ -56,45 +53,12 @@
 		callsignLoading = true;
 		const result = await fetchNui<{ callsign?: string }>(
 			NUI_EVENTS.DASHBOARD.GET_CALLSIGN,
-			{ citizenid: playerData?.citizenid },
+			{},
 			{ callsign: playerData?.metadata?.callsign ?? "" },
 		);
 		const callsign = String(result?.callsign ?? playerData?.metadata?.callsign ?? "").trim();
 		if (isValidCallsign(callsign)) localCallsign = callsign;
 		callsignLoading = false;
-	}
-
-	function openCallsignModal() {
-		callsignInput = hasCallsign ? localCallsign : "PD-";
-		callsignModalOpen = true;
-	}
-
-	function closeCallsignModal() {
-		callsignModalOpen = false;
-		callsignInput = "";
-	}
-
-	function handleCallsignInput(event: Event) {
-		callsignInput = (event.target as HTMLInputElement).value
-			.toUpperCase()
-			.replace(/[^A-Z0-9-]/g, "")
-			.slice(0, 12);
-	}
-
-	async function saveCallsign() {
-		const callsign = callsignInput.trim();
-		if (!isValidCallsign(callsign) || callsignSaving) return;
-		callsignSaving = true;
-		try {
-			await fetchNui(NUI_EVENTS.DASHBOARD.SET_CALLSIGN, {
-				callsign,
-				citizenid: playerData?.citizenid,
-			});
-			localCallsign = callsign;
-			closeCallsignModal();
-		} finally {
-			callsignSaving = false;
-		}
 	}
 
 	function navigate(tab: "Reports" | "BOLOs" | "Warrants" | "Roster" | "Calendar" | "Cases") {
@@ -164,10 +128,10 @@
 
 		<div class="header-actions">
 			{#if !callsignLoading}
-				<button class="callsign-control" onclick={openCallsignModal}>
+				<div class="callsign-control" title="Assigned callsign">
 					<span class="material-icons">badge</span>
 					<span><small>Callsign</small>{hasCallsign ? localCallsign : "Not set"}</span>
-				</button>
+				</div>
 			{/if}
 			<button class="shift-button" onclick={toggleDuty} title="End duty shift">
 				<span class="material-icons">power_settings_new</span>
@@ -310,16 +274,6 @@
 		</section>
 	</main>
 
-	{#if callsignModalOpen}
-		<div class="modal-backdrop" role="presentation" onclick={(event) => event.target === event.currentTarget && closeCallsignModal()}>
-			<div class="callsign-modal" role="dialog" aria-modal="true" aria-labelledby="callsign-title">
-				<div class="modal-heading"><div><span class="eyebrow">Officer identity</span><h2 id="callsign-title">{hasCallsign ? "Change callsign" : "Set callsign"}</h2></div><button onclick={closeCallsignModal} aria-label="Close"><span class="material-icons">close</span></button></div>
-				<label for="callsign-input">Callsign</label>
-				<input id="callsign-input" value={callsignInput} oninput={handleCallsignInput} onkeydown={(event) => { if (event.key === "Enter") saveCallsign(); if (event.key === "Escape") closeCallsignModal(); }} maxlength="12" />
-				<div class="modal-actions"><button class="secondary" onclick={closeCallsignModal}>Cancel</button><button class="primary" onclick={saveCallsign} disabled={callsignSaving || !isValidCallsign(callsignInput)}>{callsignSaving ? "Saving…" : "Save callsign"}</button></div>
-			</div>
-		</div>
-	{/if}
 </div>
 
 <style>
@@ -335,7 +289,7 @@
 	.eyebrow { color: rgba(255,255,255,.38); font-size: 9px; font-weight: 750; letter-spacing: .75px; text-transform: uppercase; }
 	.bulletin-message { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: rgba(255,255,255,.64); font-size: 11px; }
 	.header-actions { display: flex; align-items: center; gap: 6px; }
-	.callsign-control, .shift-button, .signout-button { height: 34px; display: inline-flex; align-items: center; justify-content: center; border: 1px solid rgba(255,255,255,.08); border-radius: 5px; cursor: pointer; transition: .15s ease; }
+	.callsign-control, .shift-button, .signout-button { height: 34px; display: inline-flex; align-items: center; justify-content: center; border: 1px solid rgba(255,255,255,.08); border-radius: 5px; transition: .15s ease; }
 	.callsign-control { gap: 7px; padding: 0 9px; background: rgba(255,255,255,.02); }
 	.callsign-control > .material-icons { font-size: 15px; color: rgba(255,255,255,.48); }
 	.callsign-control span:last-child { display: flex; flex-direction: column; color: rgba(var(--accent-text-rgb),.9); font-size: 9px; font-weight: 700; text-align: left; }
@@ -343,7 +297,7 @@
 	.shift-button { gap: 7px; padding: 0 13px; border-color: rgba(var(--accent-rgb),.55); background: rgba(var(--accent-rgb),.78); color: white; font-size: 10px; font-weight: 700; }
 	.shift-button .material-icons, .signout-button .material-icons { font-size: 15px; }
 	.signout-button { width: 34px; background: rgba(255,255,255,.02); color: rgba(255,255,255,.42); }
-	.callsign-control:hover, .signout-button:hover { background: rgba(255,255,255,.055); border-color: rgba(255,255,255,.14); }
+	.signout-button:hover { background: rgba(255,255,255,.055); border-color: rgba(255,255,255,.14); }
 	.shift-button:hover { background: rgba(var(--accent-rgb),.95); }
 
 	.kpi-strip { display: grid; grid-template-columns: repeat(4, 1fr); min-height: 86px; margin: 0 28px 12px; border: 1px solid rgba(255,255,255,.07); border-radius: 7px; background: rgba(255,255,255,.022); overflow: hidden; }
@@ -367,7 +321,7 @@
 	.priority-panel { grid-area: priority; } .unit-panel { grid-area: unit; } .reports-panel { grid-area: reports; } .schedule-panel { grid-area: schedule; }
 	.panel-heading, .subsection-heading { display: flex; align-items: center; justify-content: space-between; gap: 14px; flex-shrink: 0; }
 	.panel-heading { min-height: 43px; padding: 8px 12px; border-bottom: 1px solid rgba(255,255,255,.065); }
-	.panel-heading h2, .subsection-heading h2, .modal-heading h2 { margin: 1px 0 0; color: rgba(255,255,255,.88); font-size: 12px; font-weight: 680; }
+	.panel-heading h2, .subsection-heading h2 { margin: 1px 0 0; color: rgba(255,255,255,.88); font-size: 12px; font-weight: 680; }
 	.panel-heading button, .subsection-heading button { display: inline-flex; align-items: center; gap: 4px; padding: 4px; background: transparent; border: 0; color: rgba(var(--accent-text-rgb),.78); font-size: 9.5px; cursor: pointer; }
 	.panel-heading button .material-icons, .subsection-heading button .material-icons { font-size: 11px; }
 	.panel-heading button:hover, .subsection-heading button:hover { color: rgba(var(--accent-text-rgb),1); }
@@ -401,18 +355,6 @@
 	.case-heading { margin-top: 5px; }
 	.case-row { padding-left: 3px; }
 	.case-priority { width: 3px; height: 24px; border-radius: 2px; background: #e8a62f; } .case-priority.high { background: #ef5555; }
-
-	.modal-backdrop { position: fixed; inset: 0; z-index: 9999; display: grid; place-items: center; background: rgba(0,0,0,.72); backdrop-filter: blur(4px); }
-	.callsign-modal { width: min(340px,92vw); display: flex; flex-direction: column; gap: 10px; padding: 15px; border: 1px solid rgba(255,255,255,.1); border-radius: 8px; background: #11171e; box-shadow: 0 22px 70px rgba(0,0,0,.65); }
-	.modal-heading { display: flex; align-items: center; justify-content: space-between; }
-	.modal-heading > button { width: 28px; height: 28px; display: grid; place-items: center; border: 0; background: transparent; color: rgba(255,255,255,.4); cursor: pointer; } .modal-heading > button .material-icons { font-size: 17px; }
-	.callsign-modal label { color: rgba(255,255,255,.45); font-size: 9px; font-weight: 650; }
-	.callsign-modal input { height: 38px; padding: 0 10px; border: 1px solid rgba(255,255,255,.1); border-radius: 5px; outline: 0; background: rgba(255,255,255,.035); color: rgba(255,255,255,.9); font: 650 13px Inter, sans-serif; text-transform: uppercase; }
-	.callsign-modal input:focus { border-color: rgba(var(--accent-rgb),.65); box-shadow: 0 0 0 2px rgba(var(--accent-rgb),.12); }
-	.modal-actions { display: flex; justify-content: flex-end; gap: 7px; margin-top: 4px; }
-	.modal-actions button { padding: 7px 11px; border-radius: 4px; font-size: 9px; font-weight: 650; cursor: pointer; }
-	.modal-actions .secondary { border: 1px solid rgba(255,255,255,.08); background: transparent; color: rgba(255,255,255,.5); }
-	.modal-actions .primary { border: 1px solid rgba(var(--accent-rgb),.55); background: rgba(var(--accent-rgb),.7); color: white; } .modal-actions .primary:disabled { opacity: .35; cursor: not-allowed; }
 
 	@media (max-width: 1150px) {
 		.dashboard-header { grid-template-columns: auto 1fr; gap: 16px; }

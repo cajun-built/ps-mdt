@@ -28,7 +28,6 @@ export const NUI_EVENTS = {
 		UPDATE_ACTIVE_UNITS: "updateActiveUnits",
 		UPDATE_RECENT_DISPATCHES: "updateRecentDispatches",
 		UPDATE_USAGE_METRICS: "updateUsageMetrics",
-		SET_CALLSIGN: "setCallsign",
 		GET_CALLSIGN: "getCallsign"
 	},
 	COURT: {
