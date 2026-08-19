@@ -1513,7 +1513,6 @@ end
 AddEventHandler('QBCore:Server:OnPlayerLoaded', onPlayerReady)
 AddEventHandler('qbx_core:server:onPlayerLoaded', onPlayerReady)
 AddEventHandler('esx:playerLoaded', onPlayerReady)
-RegisterNetEvent('QBCore:Server:OnPlayerLoaded', onPlayerReady)
 
 -- Resource stop cleanup
 AddEventHandler('onResourceStop', function(resourceName)

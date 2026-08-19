@@ -356,20 +356,20 @@ local function registerDutyEvents()
             handleDutyChange(playerId, job, job.onDuty ~= false, nil)
         end)
     elseif cfg.DutyEventMode == 'qbcore' or cfg.DutyEventMode == 'auto' then
-        RegisterNetEvent(cfg.DutyEvent, function(source, job)
+        AddEventHandler(cfg.DutyEvent, function(source, job)
             local src = source
             if not src or not job then return end
             handleDutyChange(src, job, job.onduty == true, nil)
         end)
     elseif cfg.DutyEventMode == 'pslib' then
-        RegisterNetEvent(cfg.DutyEvent, function(playerId, jobName, onDuty, employeeData)
+        AddEventHandler(cfg.DutyEvent, function(playerId, jobName, onDuty, employeeData)
             if not playerId then return end
             handleDutyChange(playerId, { name = jobName }, onDuty == true, employeeData)
         end)
     end
 
     if cfg.MultiJobDutyEvent and GetResourceState(cfg.MultiJobResource) == 'started' then
-        RegisterNetEvent(cfg.MultiJobDutyEvent, function(playerId, jobName, onDuty, employeeData)
+        AddEventHandler(cfg.MultiJobDutyEvent, function(playerId, jobName, onDuty, employeeData)
             if not playerId then return end
             handleDutyChange(playerId, { name = jobName }, onDuty == true, employeeData)
         end)
