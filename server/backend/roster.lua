@@ -84,12 +84,12 @@ local function deptLabel(jobName, jobObj)
     return jobName
 end
 
-local function getProtectedRosterAgency(source)
-    if not CheckPermission(source, 'roster_manage_officers') then return nil end
+local function getRosterViewer(source)
     local ok, context = pcall(function()
         return exports.cgn_leo_core:GetContext(source)
     end)
-    return ok and context and context.agency or nil
+    local agency = ok and context and context.agency or nil
+    return agency, agency ~= nil and CheckPermission(source, 'roster_manage_officers')
 end
 
 local function buildRosterFromQbx(source, jobList, matchFn, defaultDept)
@@ -98,7 +98,10 @@ local function buildRosterFromQbx(source, jobList, matchFn, defaultDept)
     local members = {}
     local personnelByCitizenId = {}
     local qbx = exports['qbx_core']
-    local protectedAgency = defaultDept == 'police' and getProtectedRosterAgency(source) or nil
+    local viewerAgency, canManageRoster = nil, false
+    if defaultDept == 'police' then
+        viewerAgency, canManageRoster = getRosterViewer(source)
+    end
 
     if GetResourceState('cgn_leo_core') == 'started' and defaultDept == 'police' then
         local ok, personnel = pcall(function() return exports.cgn_leo_core:ListPersonnel() end)
@@ -149,8 +152,16 @@ local function buildRosterFromQbx(source, jobList, matchFn, defaultDept)
             local departmentLabel = deptLabel(job.name, job) or department
             local corePersonnel = personnelByCitizenId[citizenid]
                 or (job.type == Config.PoliceJobType and getCorePersonnel(citizenid) or nil)
-            local certifications = corePersonnel and certificationLabels(corePersonnel.certifications) or getCertifications(citizenid)
-            local canSeeProtected = corePersonnel and protectedAgency == corePersonnel.agency
+            local targetAgency = corePersonnel and corePersonnel.agency or job.name
+            local sameAgency = defaultDept ~= 'police' or (viewerAgency and viewerAgency == targetAgency)
+            local protected = corePersonnel and CGNMdtRosterVisibility.project(
+                corePersonnel,
+                sameAgency,
+                sameAgency and canManageRoster
+            ) or nil
+            local certifications = protected
+                and certificationLabels(protected.certifications)
+                or (sameAgency and getCertifications(citizenid) or {})
             local onDuty = onlinePlayer and job.onduty == true or false
             if corePersonnel then
                 onDuty = onlinePlayer ~= nil and corePersonnel.onDuty == true
@@ -169,10 +180,10 @@ local function buildRosterFromQbx(source, jobList, matchFn, defaultDept)
                 status = onDuty and 'On Duty' or 'Off Duty',
                 certifications = certifications,
                 badgeNumber = corePersonnel and corePersonnel.badge or callsign,
-                employmentStatus = corePersonnel and corePersonnel.status or nil,
-                assignments = corePersonnel and corePersonnel.assignments or {},
-                primaryAssignment = corePersonnel and corePersonnel.primaryAssignment or nil,
-                compartments = canSeeProtected and corePersonnel.compartments or {},
+                employmentStatus = protected and protected.employmentStatus or nil,
+                assignments = protected and protected.assignments or {},
+                primaryAssignment = protected and protected.primaryAssignment or nil,
+                compartments = protected and protected.compartments or {},
                 radioChannel = getRadioChannel(onlineSrc)
             }
 

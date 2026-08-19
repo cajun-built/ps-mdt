@@ -1176,7 +1176,8 @@ ps.registerCallback(resourceName .. ':server:getReportsByPlate', function(source
     if not CheckAuth(src) then return {} end
     if not CheckPermission(src, 'reports_view') then return {} end
 
-    if not plate or plate == '' then
+    plate = type(plate) == 'string' and plate:gsub('^%s+', ''):gsub('%s+$', ''):sub(1, 16) or ''
+    if plate == '' then
         return {}
     end
 
@@ -1194,5 +1195,11 @@ ps.registerCallback(resourceName .. ':server:getReportsByPlate', function(source
         LIMIT 20
     ]], { plate })
 
-    return rows or {}
+    local visible = {}
+    for _, row in ipairs(rows or {}) do
+        local record = GetMdtRecord('report', row.id)
+        local allowed = AuthorizeMdtRecord(src, 'record_view', 'report', record, false)
+        if allowed then visible[#visible + 1] = row end
+    end
+    return visible
 end)

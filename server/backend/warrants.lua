@@ -88,12 +88,13 @@ end
 -- every viewer), so a single broadcast is enough; the client relay gates it to
 -- LEO players before handing it to the NUI.
 function BroadcastActiveWarrants()
-    TriggerClientEvent(resourceName .. ':client:updateActiveWarrants', -1, GetActiveWarrantsData())
+    CGNMdtAudience.sendPermission('warrants_view', resourceName .. ':client:updateActiveWarrants', GetActiveWarrantsData())
 end
 
 ps.registerCallback(resourceName .. ':server:getActiveWarrants', function(source)
     local src = source
     if not CheckAuth(src) then return {} end
+    if not CheckPermission(src, 'warrants_view') then return {} end
     return GetActiveWarrantsData(src)
 end)
 

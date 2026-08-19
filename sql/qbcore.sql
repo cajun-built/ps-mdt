@@ -935,6 +935,7 @@ CREATE TABLE IF NOT EXISTS `mdt_ia_complaints` (
   `complainant_phone` varchar(20) DEFAULT NULL,
   `officer_name` varchar(100) CHARACTER SET utf8mb4 COLLATE utf8mb4_general_ci NOT NULL,
   `officer_badge` varchar(20) DEFAULT NULL,
+  `officer_citizenid` varchar(50) CHARACTER SET utf8mb4 COLLATE utf8mb4_general_ci DEFAULT NULL,
   `category` enum('misconduct','excessive_force','corruption','negligence','discrimination','other') NOT NULL DEFAULT 'other',
   `description` text NOT NULL,
   `incident_date` varchar(20) DEFAULT NULL,
@@ -946,10 +947,13 @@ CREATE TABLE IF NOT EXISTS `mdt_ia_complaints` (
   `assigned_to_name` varchar(100) CHARACTER SET utf8mb4 COLLATE utf8mb4_general_ci DEFAULT NULL,
   `created_at` timestamp NOT NULL DEFAULT current_timestamp(),
   `updated_at` timestamp NOT NULL DEFAULT current_timestamp() ON UPDATE current_timestamp(),
+  `job_type` varchar(10) NOT NULL DEFAULT 'police',
+  `owning_agency` varchar(16) NOT NULL DEFAULT 'brpd',
   PRIMARY KEY (`id`),
   UNIQUE KEY `complaint_number` (`complaint_number`),
   KEY `status` (`status`),
-  KEY `assigned_to` (`assigned_to`)
+  KEY `assigned_to` (`assigned_to`),
+  KEY `idx_mdt_ia_agency` (`job_type`, `owning_agency`, `status`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
 
 CREATE TABLE IF NOT EXISTS `mdt_ia_notes` (

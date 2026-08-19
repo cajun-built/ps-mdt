@@ -237,55 +237,7 @@ ps.registerCallback(resourceName .. ':server:getActiveUnits', function(source)
     return computeActiveUnits()
 end)
 
-local function sanitizeDispatch(call)
-    if not call or type(call) ~= 'table' then return nil end
-    local sanitized = {
-        id          = call.id,
-        message     = call.message     or call.dispatchMessage or '',
-        code        = call.code        or call.dispatchCode    or '',
-        street      = call.street      or '',
-        priority    = call.priority    or 0,
-        time        = call.time        or 0,
-        gender      = call.gender,
-        plate       = call.plate,
-        color       = call.color,
-        model       = call.model,
-        weapon      = call.weapon,
-        heading     = call.heading,
-        speed       = call.speed,
-        callSign    = call.callSign,
-        description = call.description,
-        camId       = call.camId,
-        firstColor  = call.firstColor,
-    }
-    if call.coords then
-        if type(call.coords) == 'vector3' or type(call.coords) == 'vector4' then
-            sanitized.coords = { x = call.coords.x, y = call.coords.y, z = call.coords.z }
-        elseif type(call.coords) == 'table' then
-            sanitized.coords = { x = call.coords.x or call.coords[1], y = call.coords.y or call.coords[2], z = call.coords.z or call.coords[3] }
-        end
-    end
-    sanitized.units = {}
-    if call.units and type(call.units) == 'table' then
-        for _, unit in pairs(call.units) do
-            if type(unit) == 'table' then
-                sanitized.units[#sanitized.units + 1] = {
-                    citizenid = unit.citizenid,
-                    charinfo  = unit.charinfo,
-                    job       = unit.job,
-                    metadata  = unit.metadata and { callsign = unit.metadata.callsign } or nil,
-                }
-            end
-        end
-    end
-    if call.jobs and type(call.jobs) == 'table' then
-        sanitized.jobs = {}
-        for _, job in ipairs(call.jobs) do
-            sanitized.jobs[#sanitized.jobs + 1] = job
-        end
-    end
-    return sanitized
-end
+local sanitizeDispatch = assert(CGNMdtDispatch and CGNMdtDispatch.sanitize, 'MDT dispatch sanitizer was not loaded')
 
 -- Latest open investigations for the dashboard.
 local function computeOpenCases()
@@ -735,7 +687,7 @@ ps.registerCallback(resourceName .. ':server:dismissDispatch', function(source, 
     end
     -- Nudge every open MDT to refresh its (now filtered) dispatch list.
     invalidateDispatchCache()
-    TriggerClientEvent(resourceName .. ':client:dispatchDismissed', -1, id)
+    CGNMdtAudience.sendDomain(GetMdtDomain(src), resourceName .. ':client:dispatchDismissed', id)
     return { success = true }
 end)
 
@@ -815,7 +767,7 @@ ps.registerCallback(resourceName .. ':server:setDispatchNote', function(source, 
 
     -- Tell every open MDT to refresh (note now travels with the call).
     invalidateDispatchCache()
-    TriggerClientEvent(resourceName .. ':client:dispatchNoteChanged', -1, id)
+    CGNMdtAudience.sendDomain(GetMdtDomain(src), resourceName .. ':client:dispatchNoteChanged', id)
 
     -- If units are already on the call, re-notify them that the note changed.
     if existed then
@@ -846,7 +798,7 @@ ps.registerCallback(resourceName .. ':server:deleteDispatchNote', function(sourc
         })
     end
     invalidateDispatchCache()
-    TriggerClientEvent(resourceName .. ':client:dispatchNoteChanged', -1, id)
+    CGNMdtAudience.sendDomain(GetMdtDomain(src), resourceName .. ':client:dispatchNoteChanged', id)
     return { success = true }
 end)
 
@@ -887,7 +839,7 @@ ps.registerCallback(resourceName .. ':server:selfDispatchAttach', function(sourc
     end
 
     invalidateDispatchCache()
-    TriggerClientEvent(resourceName .. ':client:dispatchNoteChanged', -1, id)
+    CGNMdtAudience.sendDomain(GetMdtDomain(src), resourceName .. ':client:dispatchNoteChanged', id)
     return { success = true }
 end)
 
@@ -986,7 +938,7 @@ ps.registerCallback(resourceName .. ':server:createManualDispatch', function(sou
 
     -- Broadcast so open MDTs pick the new call up immediately.
     invalidateDispatchCache()
-    TriggerClientEvent(resourceName .. ':client:dispatchNoteChanged', -1, id)
+    CGNMdtAudience.sendDomain(GetMdtDomain(src), resourceName .. ':client:dispatchNoteChanged', id)
     return { success = true, id = id }
 end)
 
@@ -1080,7 +1032,7 @@ ps.registerCallback(resourceName .. ':server:assignToDispatch', function(source,
     -- Manual call unit changes: refresh open MDTs.
     if manualCall then
         invalidateDispatchCache()
-        TriggerClientEvent(resourceName .. ':client:dispatchNoteChanged', -1, tostring(dispatchId))
+        CGNMdtAudience.sendDomain(GetMdtDomain(src), resourceName .. ':client:dispatchNoteChanged', tostring(dispatchId))
     end
 
     if ps.auditLog then

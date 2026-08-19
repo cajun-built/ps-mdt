@@ -70,6 +70,8 @@ Config.Dispatch = {
     -- 'auto' picks whichever of those three is currently running.
     Provider = 'auto',
     FilterByJob = true,
+    ChatCooldownMs = 2000,
+    ChatHistoryLimit = 100,
 }
 
 -- 10-codes offered in the "Create Call" modal. `code` shows in the dropdown,
@@ -131,6 +133,10 @@ Config.IA = {
     -- resource from Config.Phone; silently skipped if none is running.
     NotifyComplainant = true,
     MailSender = 'Internal Affairs',
+
+    -- Used only when a civilian cannot provide an officer badge or exact name.
+    -- The complaint form also sends the selected agency explicitly.
+    DefaultAgency = 'brpd',
 }
 
 

@@ -1,13 +1,24 @@
 local resourceName = tostring(GetCurrentResourceName())
 
--- Phase 2: IA complaints are domain-scoped (police vs ems) so each side only
--- sees its own internal-affairs cases. Existing rows default to 'police'; new
--- rows take the submitting officer's live domain.
+-- IA records are owned by an agency. BRPD, EBRSO and LSP share the MDT but do
+-- not share internal-affairs files unless a future task-force policy explicitly
+-- grants that access.
 CreateThread(function()
     Wait(2500)
     if EnsureColumn then
         EnsureColumn('mdt_ia_complaints', 'job_type', "`job_type` varchar(10) NOT NULL DEFAULT 'police'")
+        EnsureColumn('mdt_ia_complaints', 'officer_citizenid', "`officer_citizenid` varchar(50) DEFAULT NULL AFTER `officer_badge`")
+        EnsureColumn('mdt_ia_complaints', 'owning_agency', "`owning_agency` varchar(16) NOT NULL DEFAULT 'brpd' AFTER `job_type`")
     end
+    pcall(MySQL.update.await, [[
+        UPDATE mdt_ia_complaints complaint
+        INNER JOIN cgn_leo_personnel personnel
+            ON personnel.citizenid = complaint.officer_citizenid
+        SET complaint.owning_agency = personnel.agency
+        WHERE personnel.agency IN ('brpd', 'ebrso', 'lsp')
+    ]], {})
+    pcall(MySQL.query.await,
+        'ALTER TABLE mdt_ia_complaints ADD KEY idx_mdt_ia_agency (job_type, owning_agency, status)', {})
 end)
 
 local function buildComplaintNumber(id)
@@ -41,12 +52,42 @@ local VALID_IA_STATUSES = {
     closed = true,
 }
 
+local VALID_LEO_AGENCIES = { brpd = true, ebrso = true, lsp = true }
+
+local function normalizeAgency(value)
+    value = type(value) == 'string' and value:lower():gsub('%s+', '') or nil
+    return value and VALID_LEO_AGENCIES[value] and value or nil
+end
+
+local function getIaScope(src)
+    local scope = { domain = GetMdtDomain(src) }
+    if not IsLeoMdtSource(src) then return scope end
+
+    local ok, context = pcall(function()
+        return exports.cgn_leo_core:GetContext(src)
+    end)
+    scope.agency = ok and context and normalizeAgency(context.agency) or nil
+    if not scope.agency then return nil end
+    return scope
+end
+
+local function auditIa(src, action, complaintId, details)
+    if ps.auditLog then ps.auditLog(src, action, 'ia_complaint', complaintId, details or {}) end
+end
+
 local function getScopedComplaint(src, complaintId)
-    return MySQL.single.await([[
-        SELECT * FROM mdt_ia_complaints
-        WHERE id = ? AND job_type = ?
-        LIMIT 1
-    ]], { complaintId, GetMdtDomain(src) })
+    local scope = getIaScope(src)
+    if not scope then return nil end
+    if scope.agency then
+        return MySQL.single.await([[
+            SELECT * FROM mdt_ia_complaints
+            WHERE id = ? AND job_type = ? AND owning_agency = ?
+            LIMIT 1
+        ]], { complaintId, scope.domain, scope.agency })
+    end
+    return MySQL.single.await(
+        'SELECT * FROM mdt_ia_complaints WHERE id = ? AND job_type = ? LIMIT 1',
+        { complaintId, scope.domain })
 end
 
 local function getIaAssignee(src, citizenId)
@@ -57,6 +98,8 @@ local function getIaAssignee(src, citizenId)
         )
     end
 
+    local scope = getIaScope(src)
+    if not scope or not scope.agency then return nil end
     return MySQL.single.await([[
         SELECT personnel.citizenid, profile.fullname
         FROM cgn_leo_personnel personnel
@@ -66,9 +109,9 @@ local function getIaAssignee(src, citizenId)
            AND compartment.status = 'active'
            AND (compartment.expires_at IS NULL OR compartment.expires_at > NOW())
         LEFT JOIN mdt_profiles profile ON profile.citizenid = personnel.citizenid
-        WHERE personnel.citizenid = ? AND personnel.status = 'active'
+        WHERE personnel.citizenid = ? AND personnel.agency = ? AND personnel.status = 'active'
         LIMIT 1
-    ]], { citizenId })
+    ]], { citizenId, scope.agency })
 end
 
 --- Let the complainant know their complaint moved on. The success screen tells them
@@ -116,6 +159,7 @@ end)
 --- rather than guessing and attaching it to the wrong person.
 ---
 --- @return string|nil citizenid
+--- @return string|nil agency
 local function resolveOfficer(name, badge)
     name  = tostring(name or ''):gsub('^%s+', ''):gsub('%s+$', '')
     badge = tostring(badge or ''):gsub('^%s+', ''):gsub('%s+$', '')
@@ -123,24 +167,28 @@ local function resolveOfficer(name, badge)
     -- A badge is unique and unambiguous, so trust it first.
     if badge ~= '' then
         local row = MySQL.single.await([[
-            SELECT citizenid FROM mdt_profiles
-            WHERE badge_number = ? OR callsign = ?
+            SELECT personnel.citizenid, personnel.agency, profile.fullname
+            FROM cgn_leo_personnel personnel
+            LEFT JOIN mdt_profiles profile ON profile.citizenid = personnel.citizenid
+            WHERE personnel.badge_number = ? OR personnel.active_callsign = ? OR profile.callsign = ?
             LIMIT 2
-        ]], { badge, badge })
-        if row and row.citizenid then return row.citizenid end
+        ]], { badge, badge, badge })
+        if row and row.citizenid then return row.citizenid, normalizeAgency(row.agency) end
     end
 
-    if name == '' then return nil end
+    if name == '' then return nil, nil end
 
     -- Fall back to the name, but only when it points at exactly one officer.
     local rows = MySQL.query.await([[
-        SELECT citizenid FROM mdt_profiles
-        WHERE LOWER(TRIM(fullname)) = LOWER(TRIM(?))
+        SELECT personnel.citizenid, personnel.agency
+        FROM cgn_leo_personnel personnel
+        INNER JOIN mdt_profiles profile ON profile.citizenid = personnel.citizenid
+        WHERE LOWER(TRIM(profile.fullname)) = LOWER(TRIM(?))
         LIMIT 2
     ]], { name }) or {}
 
-    if #rows == 1 then return rows[1].citizenid end
-    return nil -- no match, or ambiguous: better unassigned than wrong
+    if #rows == 1 then return rows[1].citizenid, normalizeAgency(rows[1].agency) end
+    return nil, nil -- no match, or ambiguous: better unassigned than wrong
 end
 
 ps.registerCallback(resourceName .. ':server:submitComplaint', function(source, data)
@@ -177,22 +225,47 @@ ps.registerCallback(resourceName .. ':server:submitComplaint', function(source, 
         complainantName = (player.firstname or 'Unknown') .. ' ' .. (player.lastname or '')
     end
 
+    local officerName = tostring(data.officerName or data.officer_name or ''):gsub('^%s+', ''):gsub('%s+$', '')
+    local officerBadge = tostring(data.officerBadge or data.officer_badge or ''):gsub('^%s+', ''):gsub('%s+$', '')
+    local description = tostring(data.description or ''):gsub('^%s+', ''):gsub('%s+$', '')
+    local incidentLocation = tostring(data.incidentLocation or data.incident_location or '')
+    if officerName == '' or #officerName > 100 or #officerBadge > 20 then
+        return { success = false, error = 'Officer information is invalid' }
+    end
+    if #description < 20 or #description > 2000 or #incidentLocation > 200 then
+        return { success = false, error = 'Complaint description or location is invalid' }
+    end
+    if not ({
+        misconduct = true, excessive_force = true, corruption = true,
+        negligence = true, discrimination = true, other = true,
+    })[data.category or 'other'] then
+        return { success = false, error = 'Complaint category is invalid' }
+    end
+
     local witnesses = data.witnesses
     if type(witnesses) == 'table' then
         witnesses = json.encode(witnesses)
     end
+    witnesses = tostring(witnesses or '')
 
     local evidence = data.evidence
     if type(evidence) == 'table' then
         evidence = json.encode(evidence)
     end
-
-    local officerName = data.officerName or data.officer_name or ''
-    local officerBadge = data.officerBadge or data.officer_badge or ''
+    evidence = tostring(evidence or '[]')
+    if #witnesses > 4000 or #evidence > 8000 then
+        return { success = false, error = 'Complaint attachments are too large' }
+    end
 
     -- Attach the complaint to a real officer where we can. NULL means "we couldn't
     -- tell who this is about" — IA assigns it by hand rather than it going nowhere.
-    local officerCid = resolveOfficer(officerName, officerBadge)
+    local officerCid, officerAgency = resolveOfficer(officerName, officerBadge)
+    local owningAgency = officerAgency
+        or normalizeAgency(data.agency)
+        or normalizeAgency(iaCfg().DefaultAgency)
+    if not owningAgency then
+        return { success = false, error = 'Select the law enforcement agency involved' }
+    end
 
     -- The success screen promises the complainant will be contacted, so record a
     -- number they can actually be reached on.
@@ -201,14 +274,12 @@ ps.registerCallback(resourceName .. ':server:submitComplaint', function(source, 
         complainantPhone = GetCitizenPhoneNumber and GetCitizenPhoneNumber(citizenid) or nil
     end
     local incidentDate = data.incidentDate or data.incident_date or nil
-    local incidentLocation = data.incidentLocation or data.incident_location or ''
-
     local complaintId = MySQL.insert.await([[
         INSERT INTO mdt_ia_complaints
         (complaint_number, complainant_citizenid, complainant_name, complainant_phone,
          officer_citizenid, officer_name, officer_badge,
-         category, description, incident_date, incident_location, witnesses, evidence, status, job_type)
-        VALUES ('', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'open', ?)
+         category, description, incident_date, incident_location, witnesses, evidence, status, job_type, owning_agency)
+        VALUES ('', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'open', 'police', ?)
     ]], {
         citizenid,
         complainantName,
@@ -217,12 +288,12 @@ ps.registerCallback(resourceName .. ':server:submitComplaint', function(source, 
         officerName,
         officerBadge,
         data.category or 'other',
-        data.description or '',
+        description,
         incidentDate,
         incidentLocation,
         witnesses or '[]',
-        evidence or '[]',
-        GetMdtDomain(src)
+        evidence,
+        owningAgency
     })
 
     if not complaintId then
@@ -231,6 +302,11 @@ ps.registerCallback(resourceName .. ':server:submitComplaint', function(source, 
 
     local complaintNumber = buildComplaintNumber(complaintId)
     MySQL.update.await('UPDATE mdt_ia_complaints SET complaint_number = ? WHERE id = ?', { complaintNumber, complaintId })
+    auditIa(src, 'ia_complaint_submitted', complaintId, {
+        complaintNumber = complaintNumber,
+        owningAgency = owningAgency,
+        officerCitizenId = officerCid,
+    })
 
     ComplaintCooldown[citizenid] = GetGameTimer()
 
@@ -258,9 +334,14 @@ ps.registerCallback(resourceName .. ':server:getIAComplaints', function(source, 
     local clauses = {}
     local values = {}
 
-    -- Domain scope: each side only sees its own internal-affairs cases.
+    local scope = getIaScope(src)
+    if not scope then return { complaints = {}, hasMore = false } end
     clauses[#clauses + 1] = 'job_type = ?'
-    values[#values + 1] = GetMdtDomain(src)
+    values[#values + 1] = scope.domain
+    if scope.agency then
+        clauses[#clauses + 1] = 'owning_agency = ?'
+        values[#values + 1] = scope.agency
+    end
 
     if filters.status and filters.status ~= '' then
         clauses[#clauses + 1] = 'status = ?'
@@ -350,11 +431,13 @@ ps.registerCallback(resourceName .. ':server:getIAHistoryForOfficer', function(s
     if (not officerName or officerName == '') and (not officerCid or officerCid == '') then
         return {}
     end
+    local scope = getIaScope(src)
+    if not scope or not scope.agency then return {} end
 
     local ok, rows = pcall(MySQL.query.await, [[
         SELECT id, complaint_number, category, status, created_at
         FROM mdt_ia_complaints
-        WHERE job_type = ?
+        WHERE job_type = ? AND owning_agency = ?
           AND (
                 (officer_citizenid IS NOT NULL AND officer_citizenid = ?)
              OR (officer_citizenid IS NULL AND ? <> '' AND officer_name LIKE ?)
@@ -362,7 +445,8 @@ ps.registerCallback(resourceName .. ':server:getIAHistoryForOfficer', function(s
         ORDER BY created_at DESC
         LIMIT 50
     ]], {
-        GetMdtDomain(src),
+        scope.domain,
+        scope.agency,
         officerCid or '',
         officerName or '',
         '%' .. (officerName or '') .. '%',
@@ -419,13 +503,20 @@ ps.registerCallback(resourceName .. ':server:updateIAComplaintInfo', function(so
         return { success = false, error = 'No fields to update' }
     end
 
+    local scope = getIaScope(src)
+    if not scope or not scope.agency then return { success = false, error = 'Agency context unavailable' } end
     vals[#vals + 1] = complaintId
-    vals[#vals + 1] = GetMdtDomain(src)
+    vals[#vals + 1] = scope.domain
+    vals[#vals + 1] = scope.agency
     local updated = MySQL.update.await(
-        'UPDATE mdt_ia_complaints SET ' .. table.concat(sets, ', ') .. ' WHERE id = ? AND job_type = ?',
+        'UPDATE mdt_ia_complaints SET ' .. table.concat(sets, ', ') .. ' WHERE id = ? AND job_type = ? AND owning_agency = ?',
         vals
     )
     if not updated or updated < 1 then return { success = false, error = 'Complaint was not updated' } end
+    auditIa(src, 'ia_complaint_updated', complaintId, {
+        owningAgency = scope.agency,
+        fields = sets,
+    })
     return { success = true }
 end)
 
@@ -447,14 +538,19 @@ ps.registerCallback(resourceName .. ':server:updateIAStatus', function(source, c
 
     local ok, updated = pcall(
         MySQL.update.await,
-        'UPDATE mdt_ia_complaints SET status = ? WHERE id = ? AND job_type = ?',
-        { status, complaintId, GetMdtDomain(src) }
+        'UPDATE mdt_ia_complaints SET status = ? WHERE id = ? AND job_type = ? AND owning_agency = ?',
+        { status, complaintId, complaint.job_type, complaint.owning_agency }
     )
     if not ok then
         ps.warn('[updateIAStatus] Failed: ' .. tostring(updated))
         return { success = false, error = 'Failed to update status: ' .. tostring(updated) }
     end
     if not updated or updated < 1 then return { success = false, error = 'Complaint was not updated' } end
+    auditIa(src, 'ia_status_changed', complaintId, {
+        from = complaint.status,
+        to = status,
+        owningAgency = complaint.owning_agency,
+    })
 
     mailComplainantStatus(complaintId, status)
 
@@ -476,10 +572,15 @@ ps.registerCallback(resourceName .. ':server:assignIAComplaint', function(source
 
     -- Handle unassign
     if assigneeCitizenId == '__unassign__' then
-        MySQL.update.await(
-            'UPDATE mdt_ia_complaints SET assigned_to = NULL, assigned_to_name = NULL WHERE id = ? AND job_type = ?',
-            { complaintId, GetMdtDomain(src) }
+        local updated = MySQL.update.await(
+            'UPDATE mdt_ia_complaints SET assigned_to = NULL, assigned_to_name = NULL WHERE id = ? AND job_type = ? AND owning_agency = ?',
+            { complaintId, complaint.job_type, complaint.owning_agency }
         )
+        if not updated or updated < 1 then return { success = false, error = 'Complaint was not updated' } end
+        auditIa(src, 'ia_assignment_changed', complaintId, {
+            assignedTo = nil,
+            owningAgency = complaint.owning_agency,
+        })
         return { success = true }
     end
 
@@ -489,11 +590,17 @@ ps.registerCallback(resourceName .. ':server:assignIAComplaint', function(source
     end
     local assigneeName = assignee.fullname or 'Unknown'
 
-    MySQL.update.await('UPDATE mdt_ia_complaints SET assigned_to = ?, assigned_to_name = ? WHERE id = ? AND job_type = ?', {
+    local updated = MySQL.update.await('UPDATE mdt_ia_complaints SET assigned_to = ?, assigned_to_name = ? WHERE id = ? AND job_type = ? AND owning_agency = ?', {
         assigneeCitizenId,
         assigneeName,
         complaintId,
-        GetMdtDomain(src)
+        complaint.job_type,
+        complaint.owning_agency
+    })
+    if not updated or updated < 1 then return { success = false, error = 'Complaint was not updated' } end
+    auditIa(src, 'ia_assignment_changed', complaintId, {
+        assignedTo = assigneeCitizenId,
+        owningAgency = complaint.owning_agency,
     })
 
     return { success = true }
@@ -519,10 +626,15 @@ ps.registerCallback(resourceName .. ':server:addIANote', function(source, compla
     local profile = MySQL.single.await('SELECT fullname FROM mdt_profiles WHERE citizenid = ?', { citizenId })
     local authorName = profile and profile.fullname or 'Unknown'
 
-    MySQL.insert.await([[
+    local noteId = MySQL.insert.await([[
         INSERT INTO mdt_ia_notes (complaint_id, content, author_citizenid, author_name)
         VALUES (?, ?, ?, ?)
     ]], { complaintId, content, citizenId, authorName })
+    if not noteId then return { success = false, error = 'Failed to add IA note' } end
+    auditIa(src, 'ia_note_added', complaintId, {
+        noteId = noteId,
+        owningAgency = complaint.owning_agency,
+    })
 
     return { success = true }
 end)

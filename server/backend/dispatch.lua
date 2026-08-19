@@ -1,6 +1,21 @@
 local resourceName = tostring(GetCurrentResourceName())
 
 local dispatchMessages = {}
+local DispatchChatCooldown = {}
+
+local function messagesForDomain(domain)
+    if not dispatchMessages[domain] then dispatchMessages[domain] = {} end
+    return dispatchMessages[domain]
+end
+
+local function sendToDomain(domain, eventName, ...)
+    for _, playerId in ipairs(GetPlayers()) do
+        local target = tonumber(playerId)
+        if target and CheckAuth(target) and GetMdtDomain(target) == domain then
+            TriggerClientEvent(eventName, target, ...)
+        end
+    end
+end
 
 -- Send dispatch message
 ps.registerCallback(resourceName .. ':server:sendDispatchMessage', function(source, payload)
@@ -8,14 +23,22 @@ ps.registerCallback(resourceName .. ':server:sendDispatchMessage', function(sour
     if not CheckAuth(src) then return { success = false, message = 'Unauthorized' } end
 
     payload = payload or {}
-    local message = payload.message
-    local time = payload.time
+    local message = type(payload.message) == 'string'
+        and payload.message:gsub('^%s+', ''):gsub('%s+$', ''):sub(1, 500) or nil
+    local time = type(payload.time) == 'string' and payload.time:sub(1, 16) or nil
 
     if not message or message == '' then
         return { success = false, message = 'Empty message' }
     end
 
     local citizenid = ps.getIdentifier(src)
+    if not citizenid then return { success = false, message = 'Identity unavailable' } end
+    local now = GetGameTimer()
+    local cooldownMs = tonumber(Config.Dispatch and Config.Dispatch.ChatCooldownMs) or 2000
+    local lastMessage = DispatchChatCooldown[citizenid]
+    if lastMessage and now - lastMessage < cooldownMs then
+        return { success = false, message = 'Please wait before sending another message' }
+    end
     local callsign = ps.getMetadata(src, 'callsign') or '000'
     local name = ps.getPlayerName(src) or 'Unknown'
 
@@ -24,14 +47,18 @@ ps.registerCallback(resourceName .. ':server:sendDispatchMessage', function(sour
     local item = {
         profilepic = pfp or '',
         callsign = callsign,
-        cid = citizenid,
         name = '(' .. callsign .. ') ' .. name,
         message = message,
         time = time or os.date('%H:%M'),
     }
 
-    dispatchMessages[#dispatchMessages + 1] = item
-    TriggerClientEvent(resourceName .. ':client:dispatchMessage', -1, item)
+    local domain = GetMdtDomain(src)
+    local messages = messagesForDomain(domain)
+    messages[#messages + 1] = item
+    local historyLimit = tonumber(Config.Dispatch and Config.Dispatch.ChatHistoryLimit) or 100
+    while #messages > math.max(10, historyLimit) do table.remove(messages, 1) end
+    DispatchChatCooldown[citizenid] = now
+    sendToDomain(domain, resourceName .. ':client:dispatchMessage', item)
 
     return { success = true }
 end)
@@ -39,7 +66,7 @@ end)
 -- Get dispatch messages
 ps.registerCallback(resourceName .. ':server:getDispatchMessages', function(source)
     if not CheckAuth(source) then return {} end
-    return dispatchMessages
+    return messagesForDomain(GetMdtDomain(source))
 end)
 
 -- Get call responses from ps-dispatch
@@ -89,7 +116,7 @@ ps.registerCallback(resourceName .. ':server:sendCallResponse', function(source,
         TriggerEvent('dispatch:sendCallResponse', src, callid, message, time, function(isGood)
             accepted = isGood == true
             if isGood then
-                TriggerClientEvent(resourceName .. ':client:callResponse', -1, message, time, callid, name)
+                sendToDomain(GetMdtDomain(src), resourceName .. ':client:callResponse', message, time, callid, name)
             end
         end)
         return { success = accepted }
@@ -109,7 +136,7 @@ ps.registerCallback(resourceName .. ':server:signal100', function(source, payloa
 
     if active == nil then active = true end
 
-    TriggerClientEvent(resourceName .. ':client:sig100', -1, radio, active)
+    sendToDomain(GetMdtDomain(src), resourceName .. ':client:sig100', radio, active)
 
     if ps.auditLog then
         ps.auditLog(src, active and 'signal100_activated' or 'signal100_deactivated', 'dispatch', radio, {})

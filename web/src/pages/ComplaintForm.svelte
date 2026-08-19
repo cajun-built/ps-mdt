@@ -18,6 +18,7 @@
 
 	let officerName = $state("");
 	let officerBadge = $state("");
+	let agency = $state("brpd");
 	let category = $state("other");
 	let description = $state("");
 	let incidentDate = $state("");
@@ -72,6 +73,7 @@
 	function resetForm() {
 		officerName = "";
 		officerBadge = "";
+		agency = "brpd";
 		category = "other";
 		description = "";
 		incidentDate = "";
@@ -104,6 +106,7 @@
 				{
 					officerName: officerName.trim(),
 					officerBadge: officerBadge.trim(),
+					agency,
 					category,
 					description: description.trim(),
 					incidentDate,
@@ -195,6 +198,15 @@
 					<div class="form-group">
 						<span class="field-label">Badge Number</span>
 						<input class="form-input" bind:value={officerBadge} placeholder="If you know it" />
+					</div>
+
+					<div class="form-group">
+						<span class="field-label">Agency <span class="req">*</span></span>
+						<select class="form-input form-select" bind:value={agency}>
+							<option value="brpd">Baton Rouge Police Department</option>
+							<option value="ebrso">East Baton Rouge Sheriff's Office</option>
+							<option value="lsp">Louisiana State Police</option>
+						</select>
 					</div>
 
 					<div class="form-group">

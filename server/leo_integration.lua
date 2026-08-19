@@ -1,7 +1,7 @@
 AddEventHandler('cgn_leo_core:server:integrationEvent', function(consumer, event)
     if consumer ~= GetCurrentResourceName() or type(event) ~= 'table' or not event.eventId then return end
     local success, errorMessage = pcall(function()
-        TriggerClientEvent('ps-mdt:client:leoStateChanged', -1, {
+        CGNMdtAudience.sendLeo('ps-mdt:client:leoStateChanged', {
             type = event.type,
             citizenid = event.aggregateType == 'personnel' and event.aggregateId or nil,
             agency = event.agency,

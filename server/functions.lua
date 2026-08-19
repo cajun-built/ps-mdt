@@ -664,7 +664,7 @@ function SendCitizenMail(citizenid, sender, subject, message)
     local sent = pcall(function()
         exports[res]:SendMail({
             to      = email,
-            sender  = sender or 'Baton Rouge Law Enforcement',
+            sender  = sender or 'Cajun Gaming Network',
             subject = subject or '',
             message = message or '',
         })
