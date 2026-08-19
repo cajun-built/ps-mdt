@@ -680,10 +680,10 @@ Config.ManagementPermissions = {
 
 -- Bodycam Settings (override defaults if needed, remove to use built-in defaults)
 Config.Bodycam = {
-    DutyEvent = 'QBCore:Server:OnJobUpdate',
-    DutyEventMode = 'auto',
-    MultiJobDutyEvent = 'ps-multijob:server:dutyChanged',
-    DutyResource = 'qb-core',
+    DutyEvent = 'cgn_leo_core:server:dutyChanged',
+    DutyEventMode = 'cgnleo',
+    MultiJobDutyEvent = false,
+    DutyResource = 'cgn_leo_core',
     MultiJobResource = 'ps-multijob',
 }
 

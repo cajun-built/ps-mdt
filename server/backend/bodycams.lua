@@ -25,16 +25,53 @@ local function getQbCoreObject()
     return ok and core or nil
 end
 
+local function getFrameworkPlayer(playerId)
+    if GetResourceState('qbx_core') == 'started' then
+        return exports.qbx_core:GetPlayer(playerId)
+    end
+
+    local core = getQbCoreObject()
+    if core and core.Functions and core.Functions.GetPlayer then
+        return core.Functions.GetPlayer(playerId)
+    end
+    return ps and ps.getPlayer and ps.getPlayer(playerId) or nil
+end
+
+local function getFrameworkPlayers()
+    if GetResourceState('qbx_core') == 'started' then
+        return exports.qbx_core:GetQBPlayers() or {}
+    end
+
+    local core = getQbCoreObject()
+    if core and core.Functions and core.Functions.GetQBPlayers then
+        return core.Functions.GetQBPlayers() or {}
+    end
+    return nil
+end
+
+local function isVerifiedLeoOnDuty(playerId, player)
+    local data = player and player.PlayerData or nil
+    if not data or not data.job or not IsPoliceJob(data.job.name, data.job.type) then return false end
+
+    if GetResourceState('cgn_leo_core') == 'started' then
+        local ok, context = pcall(function()
+            return exports.cgn_leo_core:GetContext(playerId)
+        end)
+        return ok and context and context.onDuty == true
+    end
+
+    return data.job.onduty == true
+end
+
 local function getOnDutyOfficers()
     local officers = {}
 
     if shouldUseQbCore() then
-        local QBCore = getQbCoreObject()
-        if QBCore and QBCore.Functions and QBCore.Functions.GetQBPlayers then
-            local players = QBCore.Functions.GetQBPlayers() or {}
+        local players = getFrameworkPlayers()
+        if players then
             for _, player in pairs(players) do
-                local data = player.PlayerData
-                if data and data.job and data.job.onduty and IsPoliceJob(data.job.name, data.job.type) then
+                local data = player and player.PlayerData or nil
+                if data and isVerifiedLeoOnDuty(data.source, player) then
                     officers[#officers + 1] = player
                 end
             end
@@ -119,15 +156,12 @@ ps.registerCallback(resourceName .. ':server:getBodycams', function(source)
 
         local player = nil
         if shouldUseQbCore() then
-            local QBCore = getQbCoreObject()
-            if QBCore and QBCore.Functions and QBCore.Functions.GetPlayer then
-                player = QBCore.Functions.GetPlayer(data.playerId)
-            end
+            player = getFrameworkPlayer(data.playerId)
         elseif ps and ps.getPlayer then
             player = ps.getPlayer(data.playerId)
         end
 
-        if player and player.PlayerData and player.PlayerData.job and player.PlayerData.job.onduty then
+        if player and isVerifiedLeoOnDuty(data.playerId, player) then
             isStillOnline = true
             ps.debug('getBodycams: Officer verified as online:', data.officerName)
         end
@@ -300,61 +334,23 @@ end
 
 -- Listen for QBCore duty status changes
 local function handleDutyChange(playerId, job, onDuty, employeeData)
-    local jobName = job and job.name or employeeData and employeeData.job or nil
-    local jobType = job and job.type or employeeData and employeeData.jobType or nil
-    if not IsPoliceJob(jobName, jobType) then
+    local player = getFrameworkPlayer(playerId)
+    if onDuty == true and player and isVerifiedLeoOnDuty(playerId, player) then
+        createOfficerBodycam(playerId, player.PlayerData)
         return
     end
-
-    if onDuty then
-        local playerData = nil
-        if employeeData and employeeData.name then
-            playerData = {
-                charinfo = {
-                    firstname = employeeData.firstname or '',
-                    lastname = employeeData.lastname or '',
-                },
-                metadata = { callsign = employeeData.callsign },
-                job = {
-                    grade = { name = employeeData.rank or 'Officer' },
-                }
-            }
-            if employeeData.name then
-                local nameParts = {}
-                for part in tostring(employeeData.name):gmatch('%S+') do
-                    nameParts[#nameParts + 1] = part
-                end
-                playerData.charinfo.firstname = nameParts[1] or employeeData.name
-                playerData.charinfo.lastname = nameParts[#nameParts] or ''
-            end
-            createOfficerBodycam(playerId, playerData)
-            ps.debug('Created bodycam via duty event for officer:', employeeData.name, 'ID:', tostring(playerId))
-            return
-        end
-
-        if shouldUseQbCore() then
-            local QBCore = getQbCoreObject()
-            local Player = QBCore and QBCore.Functions and QBCore.Functions.GetPlayer and QBCore.Functions.GetPlayer(playerId) or nil
-            if Player then
-                createOfficerBodycam(playerId, Player.PlayerData)
-                return
-            end
-        elseif ps and ps.getPlayer then
-            local player = ps.getPlayer(playerId)
-            if player and player.PlayerData then
-                createOfficerBodycam(playerId, player.PlayerData)
-                return
-            end
-        end
-    else
-        removeOfficerBodycam(playerId)
-    end
+    removeOfficerBodycam(playerId)
 end
 
 local function registerDutyEvents()
     local cfg = getBodycamConfig()
 
-    if MDTFramework and MDTFramework.is('esx') then
+    if cfg.DutyEventMode == 'cgnleo' then
+        AddEventHandler('cgn_leo_core:server:dutyChanged', function(playerId, onDuty)
+            if not playerId then return end
+            handleDutyChange(playerId, nil, onDuty == true, nil)
+        end)
+    elseif MDTFramework and MDTFramework.is('esx') then
         AddEventHandler('esx:setJob', function(playerId, job)
             if not playerId or not job then return end
             handleDutyChange(playerId, job, job.onDuty ~= false, nil)
@@ -384,47 +380,10 @@ end
 CreateThread(function()
     Wait(5000)
 
-    local cfg = getBodycamConfig()
-    local multiJobAvailable = GetResourceState(cfg.MultiJobResource) == 'started'
-    if multiJobAvailable and exports[cfg.MultiJobResource] then
-        local police = exports[cfg.MultiJobResource]:getEmployees('police')
-        if police then
-            for _, officer in pairs(police) do
-                if officer.citizenid then
-                    if shouldUseQbCore() then
-                        local QBCore = getQbCoreObject()
-                        local Player = QBCore and QBCore.Functions and QBCore.Functions.GetPlayerByCitizenId and QBCore.Functions.GetPlayerByCitizenId(officer.citizenid) or nil
-                        if Player and Player.PlayerData.job and Player.PlayerData.job.onduty then
-                            createOfficerBodycam(Player.PlayerData.source, Player.PlayerData)
-                        end
-                    elseif ps and ps.getPlayerByIdentifier then
-                        -- getEmployees() returns offline staff too; resolving an
-                        -- offline citizenid can throw inside the framework bridge
-                        -- (nil player index), so guard it.
-                        local okp, player = pcall(ps.getPlayerByIdentifier, officer.citizenid)
-                        if okp and player and player.PlayerData and player.PlayerData.job and player.PlayerData.job.onduty then
-                            createOfficerBodycam(player.PlayerData.source, player.PlayerData)
-                        end
-                    end
-                end
-            end
-        end
-    elseif shouldUseQbCore() then
-        local QBCore = getQbCoreObject()
-        local players = QBCore and QBCore.Functions and QBCore.Functions.GetQBPlayers and QBCore.Functions.GetQBPlayers() or {}
-
-        for _, player in pairs(players or {}) do
-            local playerData = player.PlayerData
-            if playerData and playerData.job and playerData.job.onduty and IsPoliceJob(playerData.job.name, playerData.job.type) then
-                createOfficerBodycam(player.PlayerData.source, playerData)
-            end
-        end
-    else
-        local officers = getOnDutyOfficers()
-        for _, player in pairs(officers or {}) do
-            if player and player.PlayerData then
-                createOfficerBodycam(player.PlayerData.source, player.PlayerData)
-            end
+    local officers = getOnDutyOfficers()
+    for _, player in pairs(officers or {}) do
+        if player and player.PlayerData then
+            createOfficerBodycam(player.PlayerData.source, player.PlayerData)
         end
     end
 
