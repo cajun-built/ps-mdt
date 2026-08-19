@@ -88,7 +88,7 @@ end
 ps.registerCallback(resourceName .. ':server:getCitizens', function(source, page)
     local src = source
     if not CheckAuth(src) then return {} end
-    if not CheckPermission(src, 'bolos_view') then return {} end
+    if not CheckPermission(src, 'citizens_search') then return {} end
     local startTime = os.clock()
     page = page or 1
     -- The Citizens UI filters AND paginates client-side over the full set
@@ -213,6 +213,7 @@ end)
 ps.registerCallback(resourceName .. ':server:searchCitizens', function(source, query)
     local src = source
     if not CheckAuth(src) then return {} end
+    if not CheckPermission(src, 'citizens_search') then return {} end
     local startTime = os.clock()
 
     local norm, searchTerm = NormalizeSearch(query)
@@ -361,6 +362,7 @@ end)
 ps.registerCallback(resourceName .. ':server:getBOLO', function(source, boloType, boloStatus)
     local src = source
     if not CheckAuth(src) then return {} end
+    if not CheckPermission(src, 'bolos_view') then return {} end
     boloType = boloType or 'citizen'
     boloStatus = boloStatus or 'active'
     local BOLOS
@@ -404,6 +406,7 @@ end)
 ps.registerCallback(resourceName .. ':server:getCitizenProfile', function(source, citizenid)
     local src = source
     if not CheckAuth(src) then return end
+    if not CheckPermission(src, 'citizens_search') then return end
 
     if not citizenid or citizenid == '' then
         return { success = false, message = 'Missing citizen id' }
@@ -694,6 +697,7 @@ end)
 ps.registerCallback(resourceName .. ':server:getCitizenCharges', function(source, citizenid, page)
     local src = source
     if not CheckAuth(src) then return { charges = {}, hasMore = false } end
+    if not CheckPermission(src, 'reports_view') then return { charges = {}, hasMore = false } end
 
     if not citizenid or citizenid == '' then
         return { charges = {}, hasMore = false }
@@ -741,7 +745,7 @@ end)
 ps.registerCallback(resourceName .. ':server:updateCitizenLicense', function(source, payload)
     local src = source
     if not CheckAuth(src) then return { success = false, message = 'Unauthorized' } end
-    if not CheckPermission(src, 'bolos_create') then return { success = false, message = 'Insufficient permissions' } end
+    if not CheckPermission(src, 'citizens_edit_licenses') then return { success = false, message = 'Insufficient permissions' } end
 
     payload = payload or {}
     local citizenId = payload.citizenid
@@ -774,6 +778,7 @@ end)
 ps.registerCallback(resourceName .. ':server:updateCitizenCustomLicense', function(source, payload)
     local src = source
     if not CheckAuth(src) then return { success = false, message = 'Unauthorized' } end
+    if not CheckPermission(src, 'citizens_edit_licenses') then return { success = false, message = 'Insufficient permissions' } end
 
     payload = payload or {}
     local citizenId = payload.citizenid
@@ -805,6 +810,7 @@ end)
 ps.registerCallback(resourceName .. ':server:addSuspectFingerprint', function(source, citizenid)
     local src = source
     if not CheckAuth(src) then return { success = false, message = 'Unauthorized' } end
+    if not CheckPermission(src, 'citizens_edit_forensics') then return { success = false, message = 'Insufficient permissions' } end
 
     if not citizenid or citizenid == '' then
         return { success = false, message = 'Missing citizen id' }
@@ -846,6 +852,7 @@ end)
 ps.registerCallback(resourceName .. ':server:updateCitizenFingerprint', function(source, citizenid, fingerprint)
     local src = source
     if not CheckAuth(src) then return { success = false, message = 'Unauthorized' } end
+    if not CheckPermission(src, 'citizens_edit_forensics') then return { success = false, message = 'Insufficient permissions' } end
 
     if not citizenid or citizenid == '' then
         return { success = false, message = 'Missing citizen id' }
@@ -871,6 +878,7 @@ end)
 ps.registerCallback(resourceName .. ':server:updateCitizenDNA', function(source, citizenid, dna)
     local src = source
     if not CheckAuth(src) then return { success = false, message = 'Unauthorized' } end
+    if not CheckPermission(src, 'citizens_edit_forensics') then return { success = false, message = 'Insufficient permissions' } end
 
     if not citizenid or citizenid == '' then
         return { success = false, message = 'Missing citizen id' }
@@ -1056,6 +1064,7 @@ end)
 ps.registerCallback(resourceName .. ':server:updateCitizen', function(source, payload)
     local src = source
     if not CheckAuth(src) then return { success = false, message = 'Unauthorized' } end
+    if not CheckPermission(src, 'citizens_edit_profile') then return { success = false, message = 'Insufficient permissions' } end
 
     payload = payload or {}
     local citizenId = payload.citizenid
@@ -1079,6 +1088,7 @@ end)
 ps.registerCallback(resourceName .. ':server:addCitizenTag', function(source, payload)
     local src = source
     if not CheckAuth(src) then return { success = false, message = 'Unauthorized' } end
+    if not CheckPermission(src, 'citizens_edit_profile') then return { success = false, message = 'Insufficient permissions' } end
 
     payload = payload or {}
     local citizenId = payload.citizenid
@@ -1106,6 +1116,7 @@ end)
 ps.registerCallback(resourceName .. ':server:removeCitizenTag', function(source, payload)
     local src = source
     if not CheckAuth(src) then return { success = false, message = 'Unauthorized' } end
+    if not CheckPermission(src, 'citizens_edit_profile') then return { success = false, message = 'Insufficient permissions' } end
 
     payload = payload or {}
     local citizenId = payload.citizenid
@@ -1127,6 +1138,7 @@ end)
 ps.registerCallback(resourceName .. ':server:addCitizenGallery', function(source, payload)
     local src = source
     if not CheckAuth(src) then return { success = false, message = 'Unauthorized' } end
+    if not CheckPermission(src, 'citizens_edit_profile') then return { success = false, message = 'Insufficient permissions' } end
 
     payload = payload or {}
     local citizenId = payload.citizenid
@@ -1149,6 +1161,7 @@ end)
 ps.registerCallback(resourceName .. ':server:removeCitizenGallery', function(source, payload)
     local src = source
     if not CheckAuth(src) then return { success = false, message = 'Unauthorized' } end
+    if not CheckPermission(src, 'citizens_edit_profile') then return { success = false, message = 'Insufficient permissions' } end
 
     payload = payload or {}
     local citizenId = payload.citizenid
@@ -1330,6 +1343,7 @@ end)
 ps.registerCallback(resourceName .. ':server:getCitizenTimeline', function(source, payload)
     local src = source
     if not CheckAuth(src) then return { entries = {}, hasMore = false } end
+    if not CheckPermission(src, 'management_activity') then return { entries = {}, hasMore = false } end
 
     payload = payload or {}
     local citizenid = payload.citizenid
@@ -1360,6 +1374,7 @@ end)
 ps.registerCallback(resourceName .. ':server:getProperty', function(source, propertyId)
     local src = source
     if not CheckAuth(src) then return { success = false, message = 'Unauthorized' } end
+    if not CheckPermission(src, 'citizens_search') then return { success = false, message = 'Insufficient permissions' } end
 
     if not propertyId then
         return { success = false, message = 'Missing property id' }

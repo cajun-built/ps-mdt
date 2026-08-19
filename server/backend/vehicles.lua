@@ -234,6 +234,7 @@ ps.registerCallback(resourceName .. ':server:GetVehicles', function(source)
     local startTime = os.clock()
     local src = source
     if not CheckAuth(src) then return end
+    if not CheckPermission(src, 'vehicles_search') then return end
 
     local vehList = MySQL.query.await([[
         SELECT
@@ -349,6 +350,7 @@ end)
 ps.registerCallback(resourceName .. ':server:UpdateVehicle', function(source, payload)
     local src = source
     if not CheckAuth(src) then return { success = false, message = 'Unauthorized' } end
+    if not CheckPermission(src, 'vehicles_edit_registry') then return { success = false, message = 'Insufficient permissions' } end
 
     payload = payload or {}
     local plate = payload.plate
@@ -417,6 +419,7 @@ end)
 ps.registerCallback(resourceName .. ':server:GetVehicle', function(source, plate)
     local src = source
     if not CheckAuth(src) then return end
+    if not CheckPermission(src, 'vehicles_search') then return end
 
     if not plate or plate == '' then
         return { success = false, message = 'Missing plate' }

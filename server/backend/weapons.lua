@@ -112,6 +112,8 @@ exports('registerWeapon', registerWeapon)
 
 ps.registerCallback('ps-mdt:server:getWeapons', function(source)
     if not CheckAuth(source) then return {} end
+    local src = source
+    if not CheckPermission(src, 'weapons_search') then return {} end
     local weapons = MySQL.query.await('SELECT * FROM mdt_weapons') or {}
     local newData = {}
     local weaponBolo = {}
@@ -182,6 +184,7 @@ end)
 ps.registerCallback(resourceName .. ':server:getWeaponOwnershipHistory', function(source, payload)
     local src = source
     if not CheckAuth(src) then return {} end
+    if not CheckPermission(src, 'weapons_search') then return {} end
 
     local serial = payload
 
@@ -208,6 +211,7 @@ end)
 ps.registerCallback(resourceName .. ':server:saveWeaponFlags', function(source, serial, flags)
     local src = source
     if not CheckAuth(src) then return { success = false } end
+    if not CheckPermission(src, 'weapons_edit') then return { success = false, message = 'Insufficient permissions' } end
     if not serial or serial == '' then return { success = false } end
 
     local decoded
@@ -233,6 +237,7 @@ end)
 ps.registerCallback(resourceName .. ':server:saveWeaponInfo', function(source, payload)
     local src = source
     if not CheckAuth(src) then return { success = false, message = 'Unauthorized' } end
+    if not CheckPermission(src, 'weapons_edit') then return { success = false, message = 'Insufficient permissions' } end
 
     payload = payload or {}
     local serial = payload.serial
@@ -290,6 +295,7 @@ end)
 ps.registerCallback(resourceName .. ':server:deleteWeapon', function(source, payload)
     local src = source
     if not CheckAuth(src) then return { success = false, message = 'Unauthorized' } end
+    if not CheckPermission(src, 'weapons_delete') then return { success = false, message = 'Insufficient permissions' } end
 
     payload = payload or {}
     local id = tonumber(payload.id)
@@ -483,6 +489,7 @@ RegisterNetEvent(resourceName .. ':server:selfRegisterWeapon')
 AddEventHandler(resourceName .. ':server:selfRegisterWeapon', function(serial, imageurl, notes, owner, weapClass, weapModel)
     local src = source
     if not CheckAuth(src) then return end
+    if not CheckPermission(src, 'weapons_edit') then return end
     if not serial then return end
 
     -- Derive owner server-side from player data instead of trusting client
