@@ -641,6 +641,7 @@ Config.ManagementPermissions = {
     'notes_edit_department',
     -- Roster
     'roster_manage_certifications',
+    'roster_hire_officers',
     'roster_manage_officers',
     'taskforces_view',
     'taskforces_manage',

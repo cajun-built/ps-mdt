@@ -75,6 +75,7 @@ local leoPermissionMap = {
     dashcams_view = { permission = 'records.view' },
     notes_edit_department = { permission = 'records.supplement' },
     roster_manage_certifications = { permission = 'certifications.issue' },
+    roster_hire_officers = { permission = 'personnel.hire' },
     roster_manage_officers = { permission = 'personnel.actions', compartment = 'personnel' },
     taskforces_view = { permission = 'records.view' },
     taskforces_manage = { permission = 'taskforces.manage' },

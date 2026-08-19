@@ -202,6 +202,7 @@
 	];
 
 	let canManageCerts = $derived(authService?.hasPermission("roster_manage_certifications") ?? false);
+	let canHireOfficers = $derived(authService?.hasPermission("roster_hire_officers") ?? false);
 	let canManageOfficers = $derived(authService?.hasPermission("roster_manage_officers") ?? false);
 	let canViewTaskForces = $derived(authService?.hasPermission("taskforces_view") ?? false);
 	let canManageTaskForces = $derived(authService?.hasPermission("taskforces_manage") ?? false);
@@ -983,7 +984,7 @@
 		/>
 		<div class="topbar-right">
 			<span class="result-count">{filteredOfficers.length} {term.memberLower}{filteredOfficers.length !== 1 ? "s" : ""}</span>
-			{#if canManageOfficers && !isEmsDomain}
+			{#if canHireOfficers && !isEmsDomain}
 				<button class="btn-save" onclick={() => showHireModal = true}>Hire Officer</button>
 			{/if}
 			{#if canViewTaskForces && !isEmsDomain}
@@ -1512,7 +1513,7 @@
 				{:else if bossPanelTab === "activity"}
 					<div class="boss-section">
 						<label class="boss-label">Activity Timeline</label>
-						<p class="boss-hint">Recorded changes involving this {term.memberLower} — rank, callsign, status and more.</p>
+						<p class="boss-hint">Recorded changes involving this {term.memberLower}, including rank, callsign, status and more.</p>
 						{#if selectedOfficer?.citizenid}
 							<ActivityTimeline citizenid={selectedOfficer.citizenid} />
 						{/if}

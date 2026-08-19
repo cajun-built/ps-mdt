@@ -28,7 +28,7 @@ end
 local function getCorePersonnel(citizenid)
     if GetResourceState('cgn_leo_core') ~= 'started' then return nil end
     local ok, personnel = pcall(function()
-        return exports.cgn_leo_core:GetPersonnel(citizenid, true)
+        return exports.cgn_leo_core:GetPersonnel(citizenid)
     end)
     return ok and personnel or nil
 end
@@ -84,16 +84,29 @@ local function deptLabel(jobName, jobObj)
     return jobName
 end
 
-local function buildRosterFromQbx(jobList, matchFn, defaultDept)
+local function getProtectedRosterAgency(source)
+    if not CheckPermission(source, 'roster_manage_officers') then return nil end
+    local ok, context = pcall(function()
+        return exports.cgn_leo_core:GetContext(source)
+    end)
+    return ok and context and context.agency or nil
+end
+
+local function buildRosterFromQbx(source, jobList, matchFn, defaultDept)
     local rosterList = {}
     local activeUnits = {}
     local members = {}
+    local personnelByCitizenId = {}
     local qbx = exports['qbx_core']
+    local protectedAgency = defaultDept == 'police' and getProtectedRosterAgency(source) or nil
 
     if GetResourceState('cgn_leo_core') == 'started' and defaultDept == 'police' then
         local ok, personnel = pcall(function() return exports.cgn_leo_core:ListPersonnel() end)
         if ok then
-            for _, member in ipairs(personnel or {}) do members[member.citizenid] = true end
+            for _, member in ipairs(personnel or {}) do
+                members[member.citizenid] = true
+                personnelByCitizenId[member.citizenid] = member
+            end
         end
     end
 
@@ -134,8 +147,14 @@ local function buildRosterFromQbx(jobList, matchFn, defaultDept)
             local rank = job.grade and job.grade.name or 'Officer'
             local department = job.name or defaultDept
             local departmentLabel = deptLabel(job.name, job) or department
-            local corePersonnel = job.type == Config.PoliceJobType and getCorePersonnel(citizenid) or nil
+            local corePersonnel = personnelByCitizenId[citizenid]
+                or (job.type == Config.PoliceJobType and getCorePersonnel(citizenid) or nil)
             local certifications = corePersonnel and certificationLabels(corePersonnel.certifications) or getCertifications(citizenid)
+            local canSeeProtected = corePersonnel and protectedAgency == corePersonnel.agency
+            local onDuty = onlinePlayer and job.onduty == true or false
+            if corePersonnel then
+                onDuty = onlinePlayer ~= nil and corePersonnel.onDuty == true
+            end
 
             local onlineSrc = onlinePlayer and (onlinePlayer.PlayerData and onlinePlayer.PlayerData.source or onlinePlayer.source) or nil
             rosterList[#rosterList + 1] = {
@@ -147,15 +166,13 @@ local function buildRosterFromQbx(jobList, matchFn, defaultDept)
                 rank = corePersonnel and corePersonnel.rankName or rank,
                 department = corePersonnel and corePersonnel.agency or department,
                 departmentLabel = corePersonnel and corePersonnel.agencyLabel or departmentLabel,
-                status = (onlinePlayer and job.onduty) and 'On Duty' or 'Off Duty',
+                status = onDuty and 'On Duty' or 'Off Duty',
                 certifications = certifications,
                 badgeNumber = corePersonnel and corePersonnel.badge or callsign,
                 employmentStatus = corePersonnel and corePersonnel.status or nil,
                 assignments = corePersonnel and corePersonnel.assignments or {},
                 primaryAssignment = corePersonnel and corePersonnel.primaryAssignment or nil,
-                compartments = corePersonnel and corePersonnel.compartments or {},
-                grants = corePersonnel and corePersonnel.grants or {},
-                restrictions = corePersonnel and corePersonnel.restrictions or {},
+                compartments = canSeeProtected and corePersonnel.compartments or {},
                 radioChannel = getRadioChannel(onlineSrc)
             }
 
@@ -209,7 +226,7 @@ ps.registerCallback('ps-mdt:server:getRosterList', function(source)
     end
 
     if GetResourceState('qbx_core') == 'started' and exports['qbx_core'] then
-        return buildRosterFromQbx(jobList, matchFn, defaultDept)
+        return buildRosterFromQbx(source, jobList, matchFn, defaultDept)
     end
 
     local rosterList = {}

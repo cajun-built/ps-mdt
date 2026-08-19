@@ -108,6 +108,7 @@ export const PERMISSION_CATEGORIES: PermissionCategory[] = [
 		icon: "group",
 		permissions: [
 			{ key: "roster_manage_certifications", label: "Manage Certifications", description: "Add or remove officer certifications" },
+			{ key: "roster_hire_officers", label: "Hire Officers", description: "Hire new officers through the authorized agency workflow" },
 			{ key: "roster_manage_officers", label: "Manage Officers", description: "Promote, demote, fire officers and edit callsigns" },
 		],
 	},
