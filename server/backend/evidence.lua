@@ -854,12 +854,29 @@ ps.registerCallback(resourceName .. ':server:createCaseFromEvidence', function(s
     return { success = true, caseId = caseId, caseNumber = caseNumber }
 end)
 
-RegisterNetEvent(resourceName .. ':server:openEvidenceStash', function(stashId)
+RegisterNetEvent(resourceName .. ':server:openEvidenceStash', function(evidenceId)
     local src = source
     if not CheckAuth(src) then return end
     if not CheckPermission(src, 'evidence_view') then return end
 
-    if not stashId or stashId == '' then return end
+    evidenceId = tonumber(evidenceId)
+    if not evidenceId then return end
+
+    local evidenceRecord = GetMdtRecord('evidence', evidenceId)
+    local isStored = evidenceRecord and (evidenceRecord.stored == true
+        or evidenceRecord.stored == 1 or evidenceRecord.stored == '1')
+    if not evidenceRecord or evidenceRecord.lifecycle_status == 'voided'
+        or evidenceRecord.lifecycle_status == 'disposed' or not isStored then
+        return
+    end
+    local allowed = AuthorizeMdtRecord(src, 'record_view', 'evidence', evidenceRecord, false)
+    if not allowed then return end
+
+    -- The inventory key is derived from the immutable evidence record ID. The
+    -- client-facing locker label is descriptive only and can never select an
+    -- unrelated framework stash.
+    local stashId = ('mdt_evidence_%d'):format(evidenceRecord.id)
+    local stashLabel = evidenceRecord.title or ('Evidence %d'):format(evidenceRecord.id)
 
     -- qb-inventory
     if GetResourceState('qb-inventory') == 'started' then
@@ -872,8 +889,7 @@ RegisterNetEvent(resourceName .. ':server:openEvidenceStash', function(stashId)
 
     -- ox_inventory with forceOpenInventory
     if GetResourceState('ox_inventory') == 'started' then
-        
-        exports.ox_inventory:RegisterStash(stashId, stashId , 500 , 4000000)
+        exports.ox_inventory:RegisterStash(stashId, stashLabel, 500, 4000000)
 
         exports.ox_inventory:forceOpenInventory(src, 'stash', stashId)
         return

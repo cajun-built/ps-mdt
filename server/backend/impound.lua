@@ -170,6 +170,11 @@ local function cleanPlate(plate)
     return plate ~= '' and plate or nil
 end
 
+local function resolvedPlate(entity)
+    if not entity or entity == 0 then return nil end
+    return cleanPlate(GetVehicleNumberPlateText(entity))
+end
+
 local function officerInfo(src)
     local cid = ps.getIdentifier and ps.getIdentifier(src) or nil
     local name
@@ -556,7 +561,7 @@ end
 -- moment it takes the client to fade it out. This watchdog is the safety net for a
 -- client that crashes, alt-F4s or never reports back — the world can never keep a
 -- car that the database calls impounded.
-local REMOVAL_GRACE = 30 -- seconds
+local REMOVAL_GRACE = 3 -- seconds, enough for the authorized client fade
 local function scheduleRemoval(netId, seconds)
     netId = tonumber(netId)
     if not netId then return end
@@ -569,19 +574,6 @@ local function scheduleRemoval(netId, seconds)
         end
     end)
 end
-
--- The client finished fading the vehicle out: take it out of the world for good.
-RegisterNetEvent(resourceName .. ':server:removeVehicle', function(netId)
-    local src = source
-    if not CheckAuth(src) then return end
-    netId = tonumber(netId)
-    if not netId then return end
-
-    local entity = NetworkGetEntityFromNetworkId(netId)
-    if entity and entity ~= 0 and DoesEntityExist(entity) then
-        DeleteEntity(entity)
-    end
-end)
 
 -- Is a real player sitting in this vehicle? NPC occupants are fine; players are not.
 local function hasPlayerOccupant(entity)
@@ -611,7 +603,7 @@ ps.registerCallback(resourceName .. ':server:inspectOnSiteVehicle', function(sou
         return { success = false, message = 'There is somebody in that vehicle' }
     end
 
-    local plate = cleanPlate(payload.plate)
+    local plate = resolvedPlate(entity)
     local owned = plate and MySQL.single.await([[
         SELECT pv.id, pv.plate, pv.vehicle, pv.state, pv.citizenid,
                pv.mdt_vehicle_stolen     AS stolen,
@@ -686,6 +678,8 @@ ps.registerCallback(resourceName .. ':server:impoundOnSite', function(source, pa
     if hasPlayerOccupant(entity) then
         return { success = false, message = 'There is somebody in that vehicle' }
     end
+    payload.plate = resolvedPlate(entity)
+    if not payload.plate then return { success = false, message = 'Vehicle plate unavailable' } end
 
     -- Same impound path as the MDT; onSite lifts the "must be garaged" rule.
     payload.onSite = true
@@ -717,7 +711,7 @@ ps.registerCallback(resourceName .. ':server:cleanupVehicle', function(source, p
 
     -- Re-check ownership server-side: an owned car must never go through here,
     -- no matter what the client claims.
-    local plate = cleanPlate(payload.plate)
+    local plate = resolvedPlate(entity)
     if plate then
         local owned = MySQL.single.await(
             'SELECT id FROM player_vehicles WHERE plate = ? LIMIT 1', { plate })

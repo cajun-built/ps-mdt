@@ -139,7 +139,6 @@ local function finishImpound(veh, netId, serverCall, payload)
         fadeOutVehicle(veh)
     end
 
-    TriggerServerEvent(resourceName .. ':server:removeVehicle', netId)
 end
 
 -- ── Entry point ──────────────────────────────────────────────────────────────

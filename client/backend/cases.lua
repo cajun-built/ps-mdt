@@ -416,11 +416,11 @@ RegisterNUICallback('openEvidenceStash', function(data, cb)
         return
     end
 
-    if not data or not data.stashId or data.stashId == '' then
-        cb({ success = false, message = 'Missing stash ID' })
+    if not data or not tonumber(data.evidenceId) then
+        cb({ success = false, message = 'Missing evidence ID' })
         return
     end
 
-    TriggerServerEvent(resourceName .. ':server:openEvidenceStash', data.stashId)
+    TriggerServerEvent(resourceName .. ':server:openEvidenceStash', tonumber(data.evidenceId))
     cb({ success = true })
 end)

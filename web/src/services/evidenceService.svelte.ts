@@ -223,10 +223,10 @@ export function createEvidenceService() {
 		);
 	}
 
-	async function openEvidenceStash(stashId: string) {
+	async function openEvidenceStash(evidenceId: number) {
 		return fetchNui<{ success: boolean }>(
 			NUI_EVENTS.EVIDENCE.OPEN_EVIDENCE_STASH,
-			{ stashId },
+			{ evidenceId },
 			{ success: true },
 		);
 	}

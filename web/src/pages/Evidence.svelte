@@ -118,9 +118,9 @@
 		lightboxLabel = "";
 	}
 
-	async function openStash(stashId: string) {
-		if (!stashId) return;
-		await evidenceService.openEvidenceStash(stashId);
+	async function openStash(evidenceId: number) {
+		if (!evidenceId) return;
+		await evidenceService.openEvidenceStash(evidenceId);
 	}
 
 	async function loadEvidence(pageNumber = 1) {
@@ -228,8 +228,8 @@
 				resetCreateForm();
 				await loadEvidence(1);
 				showStatus("Evidence created successfully");
-				if (stashToOpen) {
-					await openStash(stashToOpen);
+				if (newId && stashToOpen) {
+					await openStash(Number(newId));
 				}
 			} else {
 				evidenceError = (response as any)?.error || "Failed to create evidence. Please try again.";
@@ -753,7 +753,7 @@
 						<div class="section-title">Evidence Stash</div>
 						<div class="stash-row">
 							<span class="stash-id">{selectedEvidence.stash_id}</span>
-							<button class="action-btn" onclick={() => openStash(selectedEvidence.stash_id)}>
+							<button class="action-btn" onclick={() => openStash(Number(selectedEvidence.id))}>
 								<span class="material-icons" style="font-size:14px; margin-right:4px;">inventory_2</span>
 								Open Stash
 							</button>

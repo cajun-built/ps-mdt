@@ -57,17 +57,38 @@ local fineCooldowns = {}
 ps.registerCallback(resourceName .. ':server:processFine', function(source, payload)
     local src = source
     if not CheckAuth(src) then return { success = false, message = 'Unauthorized' } end
-
-    payload = payload or {}
-    local citizenId = payload.citizenid
-    local fine = tonumber(payload.fine)
-    local reportId = payload.reportId
-
-    if not citizenId or not fine or fine ~= fine or fine <= 0 then
-        return { success = false, message = 'Missing citizen ID or invalid fine amount' }
+    if not CheckPermission(src, 'fine_process') then
+        return { success = false, message = 'You do not have permission to process fines' }
     end
 
-    fine = math.floor(fine)
+    payload = payload or {}
+    local citizenId = type(payload.citizenid) == 'string' and payload.citizenid or nil
+    local reportId = tonumber(payload.reportId)
+
+    if not citizenId or citizenId == '' or not reportId then
+        return { success = false, message = 'A valid citizen and approved report are required' }
+    end
+
+    local report = GetMdtRecord('report', reportId)
+    if not report then return { success = false, message = 'Report not found' } end
+    if report.lifecycle_status ~= 'approved' and report.lifecycle_status ~= 'closed' then
+        return { success = false, message = 'The report must be approved before collecting its fine' }
+    end
+
+    local allowed = AuthorizeMdtRecord(src, 'record_create', 'report', report, true)
+    if not allowed then
+        return { success = false, message = 'You are not authorized to collect fines for this report' }
+    end
+
+    local fineRow = MySQL.single.await([[
+        SELECT COALESCE(SUM(count * fine), 0) AS total
+        FROM mdt_reports_charges
+        WHERE reportid = ? AND citizenid = ?
+    ]], { reportId, citizenId })
+    local fine = math.floor(tonumber(fineRow and fineRow.total) or 0)
+    if fine <= 0 then
+        return { success = false, message = 'This citizen has no fine recorded on the report' }
+    end
 
     local jfConfig = GetJailFinesConfig and GetJailFinesConfig() or {}
     local maxFine = jfConfig.maxFineAmount or (Config and Config.Fines and Config.Fines.MaxAmount) or 100000
@@ -87,9 +108,25 @@ ps.registerCallback(resourceName .. ':server:processFine', function(source, payl
         return { success = false, message = 'Player must be online to process fine' }
     end
 
+    local actorId = ps.getIdentifier(src)
+    if not actorId then return { success = false, message = 'Officer identity unavailable' } end
+    local paymentId = MySQL.insert.await([[
+        INSERT IGNORE INTO mdt_fine_payments
+            (report_id, citizenid, amount, processed_by, status)
+        VALUES (?, ?, ?, ?, 'processing')
+    ]], { reportId, citizenId, fine, actorId })
+    if not paymentId or tonumber(paymentId) == 0 then
+        return { success = false, message = 'This report fine was already processed or is in progress' }
+    end
+
     -- Remove money from bank
     local removed = ps.removeMoney(Player.source or Player.PlayerData.source, 'bank', fine, 'mdt-fine')
     if removed then
+        MySQL.update.await([[
+            UPDATE mdt_fine_payments
+            SET status = 'paid', processed_at = NOW()
+            WHERE id = ? AND status = 'processing'
+        ]], { paymentId })
         ps.notify(Player.source or Player.PlayerData.source, '$' .. fine .. ' fine deducted from your bank account', 'error')
 
         -- Anti-spam cooldown
@@ -106,6 +143,10 @@ ps.registerCallback(resourceName .. ':server:processFine', function(source, payl
 
         return { success = true, message = 'Fine of $' .. fine .. ' processed' }
     else
+        MySQL.update.await(
+            "DELETE FROM mdt_fine_payments WHERE id = ? AND status = 'processing'",
+            { paymentId }
+        )
         return { success = false, message = 'Failed to remove money - insufficient funds?' }
     end
 end)

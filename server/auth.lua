@@ -54,6 +54,7 @@ local leoPermissionMap = {
     warrants_close = { permission = 'records.lifecycle' },
     charges_view = { permission = 'records.view' },
     charges_edit = { permission = 'records.lifecycle' },
+    fine_process = { permission = 'records.enforcement_create' },
     map_patrols_view = { permission = 'dispatch.view' },
     map_patrols_manage = { permission = 'dispatch.assign_other' },
     map_patrols_edit = { permission = 'dispatch.assign_other' },
