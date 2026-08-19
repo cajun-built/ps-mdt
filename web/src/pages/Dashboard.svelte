@@ -7,6 +7,7 @@
 	import { openReportInEditor } from "../stores/reportsStore";
 	import { mdtStore } from "../stores/mdtStore";
 	import { PRIORITY_COLORS } from "../constants";
+	import type { MDTTab } from "../constants";
 	import { createDashboardService } from "../services/dashboardService.svelte";
 	import ReportItem from "../components/dashboard/ReportItem.svelte";
 	import DispatchStatusWidget from "../components/dashboard/DispatchStatusWidget.svelte";
@@ -202,8 +203,14 @@
 		if (activeInstance) tabService.setInstanceTab(activeInstance.id, "BOLOs");
 	}
 
-	function viewReport(reportId: string) {
-		openReportInEditor(reportId);
+	function navigateToTab(tab: MDTTab) {
+		tabService.setActiveTab(tab);
+		const activeInstance = tabService.getActiveInstance();
+		if (activeInstance) tabService.setInstanceTab(activeInstance.id, tab);
+	}
+
+	function viewReport(reportId: number) {
+		openReportInEditor(String(reportId));
 		tabService.setActiveTab("Reports");
 		const activeInstance = tabService.getActiveInstance();
 		if (activeInstance) tabService.setInstanceTab(activeInstance.id, "Reports");
@@ -231,7 +238,7 @@
 
 	function openWarrant(reportId: number) {
 		if (!reportId) return;
-		openReportInEditor(reportId);
+		openReportInEditor(String(reportId));
 		tabService.setActiveTab("Reports");
 		const activeInstance = tabService.getActiveInstance();
 		if (activeInstance) tabService.setInstanceTab(activeInstance.id, "Reports");
@@ -509,7 +516,7 @@
 							<div class="empty-state">No pending warrants</div>
 						{:else}
 							{#each dojWarrantReviews as wr}
-								<button class="list-item-btn" onclick={() => tabService.openTab('warrant_review')}>
+								<button class="list-item-btn" onclick={() => navigateToTab("Warrant Review")}>
 									<span class="item-name">{wr.citizen_name || wr.citizenid}</span>
 									<span class="item-meta">{wr.status || 'pending'} · {formatDate(wr.created_at)}</span>
 								</button>
@@ -527,7 +534,7 @@
 							<div class="empty-state">No court cases</div>
 						{:else}
 							{#each dojCourtCases as cc}
-								<button class="list-item-btn" onclick={() => tabService.openTab('court_cases')}>
+								<button class="list-item-btn" onclick={() => navigateToTab("Court Cases")}>
 									<span class="item-name">{cc.title || cc.case_number}</span>
 									<span class="item-meta">{cc.status} · {formatDate(cc.created_at || cc.filed_date)}</span>
 								</button>
@@ -545,7 +552,7 @@
 							<div class="empty-state">No court orders</div>
 						{:else}
 							{#each dojCourtOrders as co}
-								<button class="list-item-btn" onclick={() => tabService.openTab('court_orders')}>
+								<button class="list-item-btn" onclick={() => navigateToTab("Court Orders")}>
 									<span class="item-name">{co.title || co.order_number}</span>
 									<span class="item-meta">{co.status} · {formatDate(co.created_at)}</span>
 								</button>

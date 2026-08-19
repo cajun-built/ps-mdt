@@ -16,7 +16,7 @@
 	let agreed = $state(false);
 	let submitting = $state(false);
 
-	let info = $derived(APP_INFO[authService.jobType] || APP_INFO.leo);
+	let info = $derived(APP_INFO[authService.jobType === "civilian" ? "leo" : authService.jobType] || APP_INFO.leo);
 
 	async function handleAcknowledge() {
 		if (!agreed || submitting) return;

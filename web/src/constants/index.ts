@@ -59,7 +59,8 @@ export const DOJ_TABS: readonly string[] = [
 	"Settings",
 ] as const;
 
-export function getTabsForJob(jobType: 'leo' | 'ems' | 'doj') {
+export function getTabsForJob(jobType: 'leo' | 'ems' | 'doj' | 'civilian') {
+	if (jobType === 'civilian') return [];
 	if (jobType === 'ems') {
 		return MDT_TABS.filter(tab => (EMS_TABS as readonly string[]).includes(tab.name));
 	}
@@ -119,7 +120,8 @@ export const DOJ_REPORT_TYPES = [
 	"Sentencing Report",
 ] as const;
 
-export function getReportTypesForJob(jobType: 'leo' | 'ems' | 'doj'): readonly string[] {
+export function getReportTypesForJob(jobType: 'leo' | 'ems' | 'doj' | 'civilian'): readonly string[] {
+	if (jobType === 'civilian') return [];
 	if (jobType === 'ems') return EMS_REPORT_TYPES;
 	if (jobType === 'doj') return DOJ_REPORT_TYPES;
 	return LEO_REPORT_TYPES;
