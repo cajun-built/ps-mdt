@@ -2,6 +2,7 @@ local resourceName = tostring(GetCurrentResourceName())
  
 -- Get player source ID by citizenId
 ps.registerCallback(resourceName .. ':server:GetPlayerSourceId', function(source, targetCitizenId)
+    if not CheckAuth(source) then return nil end
     if not targetCitizenId then return nil end
     local targetPlayer = ps.getPlayerByIdentifier(targetCitizenId)
     if not targetPlayer then
