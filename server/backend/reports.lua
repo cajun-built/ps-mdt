@@ -442,6 +442,7 @@ end)
 ps.registerCallback(resourceName .. ':server:searchPlayers', function(source, query)
     local src = source
     if not CheckAuth(src) then return end
+    if not CheckPermission(src, 'citizens_search') then return {} end
 
     local norm, likeQuery = NormalizeSearch(query)
     if not likeQuery then return {} end
@@ -495,6 +496,7 @@ end)
 ps.registerCallback(resourceName .. ':server:searchOfficers', function(source, query)
     local src = source
     if not CheckAuth(src) then return end
+    if not CheckPermission(src, 'record_create') then return {} end
 
     local norm, likeQuery = NormalizeSearch(query)
     if not likeQuery or #norm < 2 then
@@ -574,6 +576,7 @@ end)
 ps.registerCallback(resourceName .. ':server:searchVehiclesForReport', function(source, query)
     local src = source
     if not CheckAuth(src) then return {} end
+    if not CheckPermission(src, 'vehicles_search') then return {} end
 
     -- Consistent, case/space-insensitive normalisation (see NormalizeSearch).
     local _, likePat, plateLike = NormalizeSearch(query)
@@ -1040,8 +1043,9 @@ end)
 ps.registerCallback(resourceName..':server:getAvailableTags', function(source, playerJobType)
     local src = source
     if not CheckAuth(src) then return end
+    if not CheckPermission(src, 'reports_view') then return {} end
 
-    local jt = playerJobType or 'leo'
+    local jt = getEffectiveJobType(src)
 
     -- Pull from master mdt_tags table (report tags) filtered by job_type
     local tags = MySQL.query.await([[
@@ -1061,15 +1065,16 @@ end)
 ps.registerCallback(resourceName..':server:getCitizenTags', function(source, playerJobType)
     local src = source
     if not CheckAuth(src) then return {} end
+    if not CheckPermission(src, 'citizens_search') then return {} end
 
-    -- Return the full citizen-tag dictionary (with job_type) so the UI can
-    -- colour every tag; the client gates which ones a domain may add/remove.
+    local jt = getEffectiveJobType(src)
     local tags = MySQL.query.await([[
         SELECT t.name, t.color, t.job_type, t.description
         FROM mdt_tags t
         WHERE t.type = 'citizen'
+          AND (t.job_type = ? OR t.job_type = 'all')
         ORDER BY t.name ASC
-    ]])
+    ]], { jt })
 
     return tags or {}
 end)

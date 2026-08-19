@@ -113,11 +113,17 @@ ps.registerCallback(resourceName .. ':server:createBulletin', function(source, p
     local src = source
     assert(src, 'Player ID cannot be nil')
     if not CheckAuth(src) then return { success = false, message = 'Unauthorized' } end
+    if not CheckPermission(src, 'management_bulletins') then
+        return { success = false, message = 'Insufficient permissions' }
+    end
 
     payload = payload or {}
     local content = payload.content
-    if not content or content == '' then
+    if type(content) ~= 'string' or content == '' then
         return { success = false, message = 'Bulletin content is required' }
+    end
+    if #content > 8000 then
+        return { success = false, message = 'Bulletin content is too long' }
     end
 
     local inserted = MySQL.insert.await('INSERT INTO mdt_bulletins (content) VALUES (?)', { content })
@@ -126,6 +132,11 @@ ps.registerCallback(resourceName .. ':server:createBulletin', function(source, p
     end
 
     Cache.invalidate('dashboard:bulletins')
+    if ps.auditLog then
+        ps.auditLog(src, 'dashboard_bulletin_created', 'bulletin', inserted, {
+            action_label = 'Created dashboard bulletin',
+        })
+    end
     return { success = true, id = inserted }
 end)
 
@@ -133,6 +144,9 @@ ps.registerCallback(resourceName .. ':server:deleteBulletin', function(source, p
     local src = source
     assert(src, 'Player ID cannot be nil')
     if not CheckAuth(src) then return { success = false, message = 'Unauthorized' } end
+    if not CheckPermission(src, 'management_bulletins') then
+        return { success = false, message = 'Insufficient permissions' }
+    end
 
     payload = payload or {}
     local id = tonumber(payload.id)
@@ -140,8 +154,16 @@ ps.registerCallback(resourceName .. ':server:deleteBulletin', function(source, p
         return { success = false, message = 'Invalid bulletin ID' }
     end
 
-    MySQL.query.await('DELETE FROM mdt_bulletins WHERE id = ?', { id })
+    local deleted = MySQL.update.await('DELETE FROM mdt_bulletins WHERE id = ?', { id })
+    if not deleted or deleted < 1 then
+        return { success = false, message = 'Bulletin not found' }
+    end
     Cache.invalidate('dashboard:bulletins')
+    if ps.auditLog then
+        ps.auditLog(src, 'dashboard_bulletin_deleted', 'bulletin', id, {
+            action_label = 'Deleted dashboard bulletin',
+        })
+    end
     return { success = true }
 end)
 

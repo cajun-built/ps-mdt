@@ -59,6 +59,7 @@ ps.auditLog = writeAuditLog
 ps.registerCallback(resourceName .. ':server:getAuditLogs', function(source, params)
     local src = source
     if not CheckAuth(src) then return { items = {}, total = 0 } end
+    if not CheckPermission(src, 'management_activity') then return { items = {}, total = 0 } end
 
     params = params or {}
     local entityType = params.entityType
@@ -131,6 +132,8 @@ ps.registerCallback(resourceName .. ':server:getAuditLogsByCase', function(sourc
 
     caseId = tonumber(caseId)
     if not caseId then return {} end
+    local record = GetMdtRecord('case', caseId)
+    if not AuthorizeMdtRecord(src, 'record_view', 'case', record, false) then return {} end
 
     page = tonumber(page) or 1
     local max = tonumber(limit) or 10
