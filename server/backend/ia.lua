@@ -31,6 +31,46 @@ local STATUS_TEXT = {
     closed        = 'has been closed',
 }
 
+local VALID_IA_STATUSES = {
+    open = true,
+    under_review = true,
+    investigated = true,
+    sustained = true,
+    exonerated = true,
+    unfounded = true,
+    closed = true,
+}
+
+local function getScopedComplaint(src, complaintId)
+    return MySQL.single.await([[
+        SELECT * FROM mdt_ia_complaints
+        WHERE id = ? AND job_type = ?
+        LIMIT 1
+    ]], { complaintId, GetMdtDomain(src) })
+end
+
+local function getIaAssignee(src, citizenId)
+    if not IsLeoMdtSource(src) then
+        return MySQL.single.await(
+            'SELECT citizenid, fullname FROM mdt_profiles WHERE citizenid = ? LIMIT 1',
+            { citizenId }
+        )
+    end
+
+    return MySQL.single.await([[
+        SELECT personnel.citizenid, profile.fullname
+        FROM cgn_leo_personnel personnel
+        INNER JOIN cgn_leo_compartments compartment
+            ON compartment.personnel_id = personnel.id
+           AND compartment.compartment = 'internal_affairs'
+           AND compartment.status = 'active'
+           AND (compartment.expires_at IS NULL OR compartment.expires_at > NOW())
+        LEFT JOIN mdt_profiles profile ON profile.citizenid = personnel.citizenid
+        WHERE personnel.citizenid = ? AND personnel.status = 'active'
+        LIMIT 1
+    ]], { citizenId })
+end
+
 --- Let the complainant know their complaint moved on. The success screen tells them
 --- they'll be contacted, so this is the part that keeps that promise.
 local function mailComplainantStatus(complaintId, status)
@@ -276,7 +316,7 @@ ps.registerCallback(resourceName .. ':server:getIAComplaint', function(source, d
         return { success = false, error = 'Invalid complaint id' }
     end
 
-    local complaint = MySQL.single.await('SELECT * FROM mdt_ia_complaints WHERE id = ?', { complaintId })
+    local complaint = getScopedComplaint(src, complaintId)
     if not complaint then
         return { success = false, error = 'Complaint not found' }
     end
@@ -343,6 +383,8 @@ ps.registerCallback(resourceName .. ':server:updateIAComplaintInfo', function(so
     if not complaintId then
         return { success = false, error = 'Invalid complaint id' }
     end
+    local complaint = getScopedComplaint(src, complaintId)
+    if not complaint then return { success = false, error = 'Complaint not found' } end
 
     local sets = {}
     local vals = {}
@@ -359,10 +401,8 @@ ps.registerCallback(resourceName .. ':server:updateIAComplaintInfo', function(so
     -- IA correcting the name or badge is exactly when an unassigned complaint can
     -- finally be pinned to a real officer, so re-resolve it here.
     if updates.officer_name ~= nil or updates.officer_badge ~= nil then
-        local existing = MySQL.single.await(
-            'SELECT officer_name, officer_badge FROM mdt_ia_complaints WHERE id = ?', { complaintId })
-        local name  = updates.officer_name  ~= nil and updates.officer_name  or (existing and existing.officer_name)
-        local badge = updates.officer_badge ~= nil and updates.officer_badge or (existing and existing.officer_badge)
+        local name  = updates.officer_name  ~= nil and updates.officer_name  or complaint.officer_name
+        local badge = updates.officer_badge ~= nil and updates.officer_badge or complaint.officer_badge
         sets[#sets + 1] = 'officer_citizenid = ?'
         vals[#vals + 1] = resolveOfficer(name, badge)
     end
@@ -380,7 +420,12 @@ ps.registerCallback(resourceName .. ':server:updateIAComplaintInfo', function(so
     end
 
     vals[#vals + 1] = complaintId
-    MySQL.update.await('UPDATE mdt_ia_complaints SET ' .. table.concat(sets, ', ') .. ' WHERE id = ?', vals)
+    vals[#vals + 1] = GetMdtDomain(src)
+    local updated = MySQL.update.await(
+        'UPDATE mdt_ia_complaints SET ' .. table.concat(sets, ', ') .. ' WHERE id = ? AND job_type = ?',
+        vals
+    )
+    if not updated or updated < 1 then return { success = false, error = 'Complaint was not updated' } end
     return { success = true }
 end)
 
@@ -394,12 +439,22 @@ ps.registerCallback(resourceName .. ':server:updateIAStatus', function(source, c
     if not complaintId or not status then
         return { success = false, error = 'Invalid complaint id or status' }
     end
-
-    local ok, err = pcall(MySQL.update.await, 'UPDATE mdt_ia_complaints SET status = ? WHERE id = ?', { status, complaintId })
-    if not ok then
-        ps.warn('[updateIAStatus] Failed: ' .. tostring(err))
-        return { success = false, error = 'Failed to update status: ' .. tostring(err) }
+    if not VALID_IA_STATUSES[status] then
+        return { success = false, error = 'Invalid IA status' }
     end
+    local complaint = getScopedComplaint(src, complaintId)
+    if not complaint then return { success = false, error = 'Complaint not found' } end
+
+    local ok, updated = pcall(
+        MySQL.update.await,
+        'UPDATE mdt_ia_complaints SET status = ? WHERE id = ? AND job_type = ?',
+        { status, complaintId, GetMdtDomain(src) }
+    )
+    if not ok then
+        ps.warn('[updateIAStatus] Failed: ' .. tostring(updated))
+        return { success = false, error = 'Failed to update status: ' .. tostring(updated) }
+    end
+    if not updated or updated < 1 then return { success = false, error = 'Complaint was not updated' } end
 
     mailComplainantStatus(complaintId, status)
 
@@ -416,20 +471,29 @@ ps.registerCallback(resourceName .. ':server:assignIAComplaint', function(source
     if not complaintId or not assigneeCitizenId then
         return { success = false, error = 'Invalid complaint or assignee' }
     end
+    local complaint = getScopedComplaint(src, complaintId)
+    if not complaint then return { success = false, error = 'Complaint not found' } end
 
     -- Handle unassign
     if assigneeCitizenId == '__unassign__' then
-        MySQL.update.await('UPDATE mdt_ia_complaints SET assigned_to = NULL, assigned_to_name = NULL WHERE id = ?', { complaintId })
+        MySQL.update.await(
+            'UPDATE mdt_ia_complaints SET assigned_to = NULL, assigned_to_name = NULL WHERE id = ? AND job_type = ?',
+            { complaintId, GetMdtDomain(src) }
+        )
         return { success = true }
     end
 
-    local profile = MySQL.single.await('SELECT fullname FROM mdt_profiles WHERE citizenid = ?', { assigneeCitizenId })
-    local assigneeName = profile and profile.fullname or 'Unknown'
+    local assignee = getIaAssignee(src, assigneeCitizenId)
+    if not assignee then
+        return { success = false, error = 'Assignee is not an active IA investigator' }
+    end
+    local assigneeName = assignee.fullname or 'Unknown'
 
-    MySQL.update.await('UPDATE mdt_ia_complaints SET assigned_to = ?, assigned_to_name = ? WHERE id = ?', {
+    MySQL.update.await('UPDATE mdt_ia_complaints SET assigned_to = ?, assigned_to_name = ? WHERE id = ? AND job_type = ?', {
         assigneeCitizenId,
         assigneeName,
-        complaintId
+        complaintId,
+        GetMdtDomain(src)
     })
 
     return { success = true }
@@ -445,6 +509,11 @@ ps.registerCallback(resourceName .. ':server:addIANote', function(source, compla
     if not complaintId or not content or content == '' then
         return { success = false, error = 'Invalid complaint or empty note' }
     end
+    if type(content) ~= 'string' or #content > 4000 then
+        return { success = false, error = 'IA note is too long' }
+    end
+    local complaint = getScopedComplaint(src, complaintId)
+    if not complaint then return { success = false, error = 'Complaint not found' } end
 
     local citizenId = ps.getIdentifier(src)
     local profile = MySQL.single.await('SELECT fullname FROM mdt_profiles WHERE citizenid = ?', { citizenId })
@@ -470,6 +539,8 @@ ps.registerCallback(resourceName .. ':server:deleteIANote', function(source, not
     if not noteId or not complaintId then
         return { success = false, error = 'Invalid note or complaint' }
     end
+    local complaint = getScopedComplaint(src, complaintId)
+    if not complaint then return { success = false, error = 'Complaint not found' } end
 
     MySQL.query.await('DELETE FROM mdt_ia_notes WHERE id = ? AND complaint_id = ?', { noteId, complaintId })
     return { success = true }
