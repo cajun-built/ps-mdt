@@ -862,6 +862,7 @@ end)
 RegisterNetEvent(resourceName .. ':server:activateCamera', function(camId)
     local playerId = source
     if not CheckAuth(playerId) then return end
+    if not CheckPermission(playerId, 'cameras_view') then return end
     ps.debug('Activating camera for player:', playerId, 'Camera ID:', camId)
 
     local camera = spawnedCameras[camId]
@@ -1407,6 +1408,10 @@ ps.registerCallback(resourceName .. ':server:viewCamera', function(source, camer
         if dc.id == cameraId then
             return startDashcamView(src, cameraId)
         end
+    end
+
+    if not CheckPermission(src, 'cameras_view') then
+        return { success = false, error = 'No permission to view cameras' }
     end
 
     local camera = spawnedCameras[cameraId]

@@ -70,6 +70,7 @@ ps.registerCallback(resourceName .. ':server:getBodycams', function(source)
         ps.debug('getBodycams: CheckAuth failed for source:', src)
         return {}
     end
+    if not CheckPermission(src, 'bodycams_view') then return {} end
 
     ps.debug('getBodycams: CheckAuth passed for source:', src)
     local bodycams = {}
@@ -166,6 +167,9 @@ ps.registerCallback(resourceName .. ':server:viewBodycam', function(source, body
     local src = source
     if not CheckAuth(src) then
         return { success = false, error = "Unauthorized" }
+    end
+    if not CheckPermission(src, 'bodycams_view') then
+        return { success = false, error = "No permission to view bodycams" }
     end
 
     local bodycamData = bodycamInstances[bodycamId]
