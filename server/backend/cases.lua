@@ -599,12 +599,16 @@ ps.registerCallback(resourceName .. ':server:addCaseAttachmentUpload', function(
             return { success = false, error = 'Unsupported attachment type' }
         end
     end
+    local encodedContentType = type(data) == 'string' and data:match('^data:([^;]+);base64,') or nil
+    if encodedContentType ~= contentType then
+        return { success = false, error = 'Attachment content type mismatch' }
+    end
 
     if not FiveManageUpload then
         return { success = false, error = 'FiveManage upload not available' }
     end
 
-    local publicUrl, uploadError = FiveManageUpload(data, filename)
+    local publicUrl, uploadError = FiveManageUpload(data, filename, src, Config.Uploads.AllowedAttachmentTypes)
     if not publicUrl then
         return { success = false, error = 'Upload failed: ' .. (uploadError or 'Unknown error') }
     end

@@ -12,30 +12,91 @@ local FiveManageApiKey = GetConvar('ps_mdt_fivemanage_key_images', '')
 local FiveManageLogsKey = GetConvar('ps_mdt_fivemanage_key_logs', '')
 
 local resourceName = tostring(GetCurrentResourceName())
+local UploadRateLimits = {}
+local UploadSignatures = {
+    ['image/png'] = 'iVBORw0KGgo',
+    ['image/jpeg'] = '/9j/',
+    ['image/webp'] = 'UklGR',
+    ['application/pdf'] = 'JVBERi0',
+}
+
+local function isAllowedUploadType(mimeType, allowedTypes)
+    for _, allowed in ipairs(allowedTypes or {}) do
+        if mimeType == allowed then return true end
+    end
+    return false
+end
+
+local function consumeUploadAllowance(source)
+    local limit = tonumber(Config and Config.Uploads and Config.Uploads.RateLimitPerMinute) or 0
+    if not source or limit <= 0 then return true end
+
+    local now = os.time()
+    local bucket = UploadRateLimits[source]
+    if not bucket or now - bucket.startedAt >= 60 then
+        UploadRateLimits[source] = { startedAt = now, count = 1 }
+        return true
+    end
+    if bucket.count >= limit then return false end
+    bucket.count = bucket.count + 1
+    return true
+end
+
+local function validateUpload(base64Data, allowedTypes)
+    if type(base64Data) ~= 'string' or base64Data == '' then
+        return nil, nil, 'No image data'
+    end
+
+    local mimeType, rawBase64 = base64Data:match('^data:([^;]+);base64,(.+)$')
+    if not mimeType or not rawBase64 then
+        return nil, nil, 'Invalid upload encoding'
+    end
+    if rawBase64:find('[^A-Za-z0-9+/=]') then
+        return nil, nil, 'Invalid base64 payload'
+    end
+
+    allowedTypes = allowedTypes or (Config and Config.Uploads and Config.Uploads.AllowedEvidenceImageTypes) or {}
+    if not isAllowedUploadType(mimeType, allowedTypes) then
+        return nil, nil, 'Unsupported upload type'
+    end
+    local signature = UploadSignatures[mimeType]
+    if not signature or rawBase64:sub(1, #signature) ~= signature then
+        return nil, nil, 'Upload content does not match its declared type'
+    end
+
+    local padding = rawBase64:sub(-2) == '==' and 2 or (rawBase64:sub(-1) == '=' and 1 or 0)
+    local decodedBytes = math.floor(#rawBase64 * 3 / 4) - padding
+    local maxBytes = tonumber(Config and Config.Uploads and Config.Uploads.MaxBytes) or 5242880
+    if decodedBytes <= 0 or decodedBytes > maxBytes then
+        return nil, nil, 'Upload exceeds the maximum file size'
+    end
+
+    return rawBase64, mimeType, nil
+end
+
+AddEventHandler('playerDropped', function()
+    UploadRateLimits[source] = nil
+end)
 
 --- Upload a base64 data URI to FiveManage and return the public URL.
---- @param base64Data string     The base64 string (with or without data URI prefix)
+--- @param base64Data string     A base64 data URI
 --- @param filename string       Original filename for metadata
+--- @param source number|nil     Player source for rate limiting
+--- @param allowedTypes table|nil Allowed MIME types
 --- @return string|nil url       The public URL on success, nil on failure
 --- @return string|nil error     Error message on failure
-function FiveManageUpload(base64Data, filename)
+function FiveManageUpload(base64Data, filename, source, allowedTypes)
+    local rawBase64, _, validationError = validateUpload(base64Data, allowedTypes)
+    if not rawBase64 then return nil, validationError end
+    if not consumeUploadAllowance(source) then return nil, 'Upload rate limit exceeded' end
+
     if not FiveManageApiKey or FiveManageApiKey == '' then
         local msg = 'FiveManage API key not configured. Add to server.cfg: set ps_mdt_fivemanage_key_images "YOUR_KEY"'
         ps.warn(msg)
         return nil, msg
     end
 
-    -- Strip data URI prefix if present (e.g. "data:image/png;base64,")
-    local rawBase64 = base64Data
-    if type(rawBase64) == 'string' and rawBase64:find('base64,', 1, true) then
-        rawBase64 = rawBase64:match('base64,(.+)')
-    end
-
-    if not rawBase64 or rawBase64 == '' then
-        local msg = 'Empty image data received'
-        ps.warn('FiveManage upload: ' .. msg)
-        return nil, msg
-    end
+    filename = tostring(filename or 'upload.bin'):gsub('[^%w._-]', '_'):sub(1, 128)
 
     local p = promise.new()
 
@@ -64,7 +125,7 @@ function FiveManageUpload(base64Data, filename)
         end
     end, 'POST', json.encode({
         base64 = rawBase64,
-        filename = filename or 'upload.png',
+        filename = filename,
     }), {
         ['Content-Type'] = 'application/json',
         ['Authorization'] = FiveManageApiKey,
@@ -78,10 +139,11 @@ end
 -- Server callback to upload a mugshot from base64 data (API key stays server-side)
 ps.registerCallback(resourceName .. ':server:uploadMugshotBase64', function(source, base64Data)
     if not CheckAuth(source) then return { url = nil, error = 'Unauthorized' } end
-    if not base64Data or base64Data == '' then
-        return { url = nil, error = 'No image data' }
+    if not CheckPermission(source, 'citizens_edit_profile') then
+        return { url = nil, error = 'Insufficient permissions' }
     end
-    local url, err = FiveManageUpload(base64Data, 'mugshot_' .. source .. '.png')
+    local allowedTypes = Config and Config.Uploads and Config.Uploads.AllowedEvidenceImageTypes or nil
+    local url, err = FiveManageUpload(base64Data, 'mugshot_' .. source .. '.png', source, allowedTypes)
     return { url = url, error = err }
 end)
 
@@ -90,7 +152,15 @@ RegisterNetEvent(resourceName .. ':server:mugshotUpload')
 AddEventHandler(resourceName .. ':server:mugshotUpload', function(citizenid, mugshotUrls)
     local src = source
     if not CheckAuth(src) then return end
-    if not citizenid or not mugshotUrls or #mugshotUrls == 0 then return end
+    if not CheckPermission(src, 'citizens_edit_profile') then return end
+    if type(citizenid) ~= 'string' or citizenid == '' or #citizenid > 64 then return end
+    if type(mugshotUrls) ~= 'table' or #mugshotUrls == 0 or #mugshotUrls > 4 then return end
+
+    local validatedUrls = {}
+    for _, url in ipairs(mugshotUrls) do
+        if type(url) ~= 'string' or #url > 2048 or not url:find('^https://') then return end
+        validatedUrls[#validatedUrls + 1] = url
+    end
 
     -- Ensure profile exists
     if not EnsureProfileExists(citizenid) then
@@ -105,55 +175,44 @@ AddEventHandler(resourceName .. ':server:mugshotUpload', function(citizenid, mug
     end
 
     -- Set the first mugshot as profile picture
-    if mugshotUrls[1] and mugshotUrls[1] ~= '' then
-        MySQL.update.await('UPDATE mdt_profiles SET profilepicture = ? WHERE citizenid = ?', { mugshotUrls[1], citizenid })
-    end
+    MySQL.update.await('UPDATE mdt_profiles SET profilepicture = ? WHERE citizenid = ?', { validatedUrls[1], citizenid })
 
     -- Add all mugshots to gallery
-    for _, url in ipairs(mugshotUrls) do
-        if url and url ~= '' and url ~= 'invalid_url' then
-            MySQL.insert.await('INSERT INTO mdt_profiles_gallery (profileId, image, label) VALUES (?, ?, ?)', {
-                profile.id, url, 'Mugshot'
-            })
-        end
+    for _, url in ipairs(validatedUrls) do
+        MySQL.insert.await('INSERT INTO mdt_profiles_gallery (profileId, image, label) VALUES (?, ?, ?)', {
+            profile.id, url, 'Mugshot'
+        })
     end
 
-    ps.debug('Mugshot upload complete for ' .. citizenid .. ' (' .. #mugshotUrls .. ' photos)')
-end)
-
--- Trigger mugshot on a suspect by citizenid (from MDT UI)
-ps.registerCallback(resourceName .. ':server:triggerSuspectMugshot', function(source, citizenid)
-    if not CheckAuth(source) then return { success = false, message = 'Unauthorized' } end
-    if not citizenid then return { success = false, message = 'Missing citizen id' } end
-
-    local targetPlayer = ps.getPlayerByIdentifier(citizenid)
-    if not targetPlayer then
-        return { success = false, message = 'Suspect is not online' }
+    if ps.auditLog then
+        ps.auditLog(src, 'citizen_mugshot_updated', 'citizen', citizenid, {
+            image_count = #validatedUrls,
+        })
     end
-
-    local targetSource = targetPlayer.source or (targetPlayer.PlayerData and targetPlayer.PlayerData.source)
-    if not targetSource then
-        return { success = false, message = 'Could not find suspect source' }
-    end
-
-    TriggerClientEvent(resourceName .. ':client:triggerMugshot', targetSource)
-    return { success = true, message = 'Mugshot triggered on suspect' }
+    ps.debug('Mugshot upload complete for ' .. citizenid .. ' (' .. #validatedUrls .. ' photos)')
 end)
 
 -- Upload a profile photo for a suspect via base64 (from MDT UI)
-ps.registerCallback(resourceName .. ':server:uploadSuspectPhoto', function(source, citizenid, imageUrl)
+ps.registerCallback(resourceName .. ':server:uploadSuspectPhoto', function(source, citizenid, imageData)
     if not CheckAuth(source) then return { success = false, message = 'Unauthorized' } end
-    if not CheckPermission(source, 'evidence_upload') then
+    if not CheckPermission(source, 'citizens_edit_profile') then
         return { success = false, message = 'Insufficient permissions' }
     end
-    if not citizenid or not imageUrl then
+    if type(citizenid) ~= 'string' or citizenid == '' or #citizenid > 64 or not imageData then
         return { success = false, message = 'Missing data' }
     end
 
-    -- local imageUrl, uploadError = FiveManageUpload(base64Image, 'suspect_' .. citizenid .. '.png')
-    -- if not imageUrl then
-    --     return { success = false, message = 'Upload failed: ' .. (uploadError or 'Unknown error') }
-    -- end
+    local safeCitizenId = citizenid:gsub('[^%w_-]', '')
+    local allowedTypes = Config and Config.Uploads and Config.Uploads.AllowedEvidenceImageTypes or nil
+    local imageUrl, uploadError = FiveManageUpload(
+        imageData,
+        'suspect_' .. safeCitizenId .. '.png',
+        source,
+        allowedTypes
+    )
+    if not imageUrl then
+        return { success = false, message = 'Upload failed: ' .. (uploadError or 'Unknown error') }
+    end
 
     -- Ensure profile exists
     if not EnsureProfileExists(citizenid) then
@@ -172,6 +231,12 @@ ps.registerCallback(resourceName .. ':server:uploadSuspectPhoto', function(sourc
     MySQL.insert.await('INSERT INTO mdt_profiles_gallery (profileId, image, label) VALUES (?, ?, ?)', {
         profile.id, imageUrl, 'Profile Photo'
     })
+
+    if ps.auditLog then
+        ps.auditLog(source, 'citizen_profile_photo_updated', 'citizen', citizenid, {
+            action_label = 'Updated citizen profile photo',
+        })
+    end
 
     return { success = true, message = 'Photo uploaded', imageUrl = imageUrl }
 end)
