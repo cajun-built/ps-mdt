@@ -132,6 +132,138 @@ function EnsureColumn(tableName, columnName, definition)
     return ok
 end
 
+local evidenceLocks = {}
+
+local function withEvidenceLock(evidenceId, callback)
+    if evidenceLocks[evidenceId] then return false, 'Evidence is already being updated' end
+    evidenceLocks[evidenceId] = true
+    local callOk, success, result = pcall(callback)
+    evidenceLocks[evidenceId] = nil
+    if not callOk then
+        print(('[ps-mdt] evidence custody operation failed: %s'):format(tostring(success)))
+        return false, 'Evidence custody service unavailable'
+    end
+    return success, result
+end
+
+local function evidenceCustodyAllowed(source)
+    if not IsLeoMdtSource or not IsLeoMdtSource(source) then return true end
+    local allowed = exports.cgn_leo_core:Authorize(source, 'evidence.custody', { requireDuty = true })
+    return allowed == true
+end
+
+function EnsureEvidenceIntegritySchema()
+    EnsureColumn('mdt_evidence_items', 'pending_holder', '`pending_holder` varchar(50) DEFAULT NULL AFTER `last_holder`')
+    EnsureColumn('mdt_evidence_items', 'transfer_requested_by', '`transfer_requested_by` varchar(50) DEFAULT NULL AFTER `pending_holder`')
+    EnsureColumn('mdt_evidence_items', 'transfer_requested_at', '`transfer_requested_at` timestamp NULL DEFAULT NULL AFTER `transfer_requested_by`')
+    pcall(MySQL.query.await, [[
+        ALTER TABLE `mdt_evidence_custody`
+        MODIFY COLUMN `action` enum('collected','transferred','transfer_requested','transfer_accepted','transfer_declined',
+            'stored','released','disposed','updated','viewed') NOT NULL DEFAULT 'collected'
+    ]])
+end
+
+function RequestEvidenceTransfer(source, evidenceId, toCitizenId, notes)
+    evidenceId = tonumber(evidenceId)
+    toCitizenId = type(toCitizenId) == 'string' and toCitizenId or nil
+    if not evidenceId or not toCitizenId or toCitizenId == '' then return false, 'Invalid evidence transfer' end
+    if not evidenceCustodyAllowed(source) then return false, 'Evidence handling certification required' end
+    local fromCitizenId = ps.getIdentifier(source)
+    if not fromCitizenId or fromCitizenId == toCitizenId then return false, 'Invalid evidence recipient' end
+    local target = exports.cgn_leo_core:GetPersonnel(toCitizenId, true)
+    if not target or (target.status ~= 'active' and target.status ~= 'probationary') then
+        return false, 'Recipient is not active LEO personnel'
+    end
+
+    return withEvidenceLock(evidenceId, function()
+        local item = MySQL.single.await([[
+            SELECT id, last_holder, pending_holder FROM mdt_evidence_items WHERE id = ? LIMIT 1
+        ]], { evidenceId })
+        if not item then return false, 'Evidence item not found' end
+        if item.last_holder ~= fromCitizenId then return false, 'Only the current custodian may transfer evidence' end
+        if item.pending_holder then return false, 'Evidence already has a pending transfer' end
+        local success = MySQL.transaction.await({
+            {
+                query = [[
+                    UPDATE mdt_evidence_items
+                    SET pending_holder = ?, transfer_requested_by = ?, transfer_requested_at = NOW()
+                    WHERE id = ? AND last_holder = ? AND pending_holder IS NULL
+                ]], values = { toCitizenId, fromCitizenId, evidenceId, fromCitizenId },
+            },
+            {
+                query = [[
+                    INSERT INTO mdt_evidence_custody
+                        (evidence_id, from_citizenid, to_citizenid, action, notes)
+                    VALUES (?, ?, ?, 'transfer_requested', ?)
+                ]], values = { evidenceId, fromCitizenId, toCitizenId, notes or '' },
+            },
+        })
+        return success == true, success and 'Evidence transfer requested' or 'Evidence transfer failed'
+    end)
+end
+
+function AcceptEvidenceTransfer(source, evidenceId, notes)
+    evidenceId = tonumber(evidenceId)
+    if not evidenceId then return false, 'Invalid evidence transfer' end
+    if not evidenceCustodyAllowed(source) then return false, 'Evidence handling certification required' end
+    local recipient = ps.getIdentifier(source)
+    return withEvidenceLock(evidenceId, function()
+        local item = MySQL.single.await([[
+            SELECT id, last_holder, pending_holder FROM mdt_evidence_items WHERE id = ? LIMIT 1
+        ]], { evidenceId })
+        if not item or item.pending_holder ~= recipient then return false, 'No evidence transfer is pending for you' end
+        local success = MySQL.transaction.await({
+            {
+                query = [[
+                    UPDATE mdt_evidence_items
+                    SET last_holder = pending_holder, pending_holder = NULL,
+                        transfer_requested_by = NULL, transfer_requested_at = NULL
+                    WHERE id = ? AND pending_holder = ?
+                ]], values = { evidenceId, recipient },
+            },
+            {
+                query = [[
+                    INSERT INTO mdt_evidence_custody
+                        (evidence_id, from_citizenid, to_citizenid, action, notes)
+                    VALUES (?, ?, ?, 'transfer_accepted', ?)
+                ]], values = { evidenceId, item.last_holder, recipient, notes or '' },
+            },
+        })
+        return success == true, success and 'Evidence custody accepted' or 'Evidence acceptance failed'
+    end)
+end
+
+function DeclineEvidenceTransfer(source, evidenceId, notes)
+    evidenceId = tonumber(evidenceId)
+    if not evidenceId then return false, 'Invalid evidence transfer' end
+    local recipient = ps.getIdentifier(source)
+    return withEvidenceLock(evidenceId, function()
+        local item = MySQL.single.await([[
+            SELECT id, last_holder, pending_holder FROM mdt_evidence_items WHERE id = ? LIMIT 1
+        ]], { evidenceId })
+        if not item or item.pending_holder ~= recipient then return false, 'No evidence transfer is pending for you' end
+        local success = MySQL.transaction.await({
+            {
+                query = [[
+                    UPDATE mdt_evidence_items
+                    SET pending_holder = NULL, transfer_requested_by = NULL, transfer_requested_at = NULL
+                    WHERE id = ? AND pending_holder = ?
+                ]], values = { evidenceId, recipient },
+            },
+            {
+                query = [[
+                    INSERT INTO mdt_evidence_custody
+                        (evidence_id, from_citizenid, to_citizenid, action, notes)
+                    VALUES (?, ?, ?, 'transfer_declined', ?)
+                ]], values = { evidenceId, item.last_holder, recipient, notes or '' },
+            },
+        })
+        return success == true, success and 'Evidence transfer declined' or 'Evidence decline failed'
+    end)
+end
+
+MySQL.ready(EnsureEvidenceIntegritySchema)
+
 function GetMdtDomain(src)
     local jobName = ps.getJobName and ps.getJobName(src) or nil
     local jobType = ps.getJobType and ps.getJobType(src) or nil

@@ -113,7 +113,6 @@ ps.registerCallback(resourceName .. ':server:getFTOList', function(source, pageN
         if not agency then return { entries = {}, hasMore = false } end
         clauses[#clauses + 1] = 'a.trainee_citizenid IN (SELECT citizenid FROM cgn_leo_personnel WHERE agency = ?)'
         values[#values + 1] = agency
-        values[#values + 1] = citizenId
     end
 
     if filters.status and filters.status ~= '' and filters.status ~= 'all' then
@@ -280,6 +279,14 @@ ps.registerCallback(resourceName .. ':server:createFTOAssignment', function(sour
     local ftoNumber = buildFTONumber(assignmentId)
     MySQL.update.await('UPDATE mdt_fto_assignments SET fto_number = ? WHERE id = ?', { ftoNumber, assignmentId })
 
+    local trainingReason = data.notes and tostring(data.notes) or ('FTO assignment ' .. ftoNumber .. ' started')
+    local started, startResult = exports.cgn_leo_core:StartFieldTraining(src, data.trainee_citizenid,
+        trainingReason, ('fto:%s:start'):format(assignmentId))
+    if not started then
+        MySQL.query.await('DELETE FROM mdt_fto_assignments WHERE id = ?', { assignmentId })
+        return { success = false, error = 'Shared LEO training update failed: ' .. tostring(startResult) }
+    end
+
     return { success = true, id = assignmentId, fto_number = ftoNumber }
 end)
 
@@ -333,7 +340,7 @@ ps.registerCallback(resourceName .. ':server:advanceFTOPhase', function(source, 
     if not assignmentInScope(src, assignmentId) then return { success = false, error = 'Unauthorized' } end
 
     local a = MySQL.single.await(
-        'SELECT id, current_phase_id, status, trainee_name FROM mdt_fto_assignments WHERE id = ?', { assignmentId })
+        'SELECT id, current_phase_id, status, trainee_citizenid, trainee_name FROM mdt_fto_assignments WHERE id = ?', { assignmentId })
     if not a then return { success = false, error = 'Assignment not found' } end
     if a.status ~= 'active' then return { success = false, error = 'Only active assignments can change phase' } end
 
@@ -373,6 +380,12 @@ ps.registerCallback(resourceName .. ':server:advanceFTOPhase', function(source, 
 
     -- Past the last phase → graduation.
     local endDate = os.date('%Y-%m-%d')
+    local completed, completionResult = exports.cgn_leo_core:CompleteFieldTraining(src, a.trainee_citizenid,
+        tostring(data.note or ('FTO assignment ' .. assignmentId .. ' completed')),
+        ('fto:%s:complete'):format(assignmentId))
+    if not completed then
+        return { success = false, error = 'Shared LEO training update failed: ' .. tostring(completionResult) }
+    end
     MySQL.update.await("UPDATE mdt_fto_assignments SET status = 'completed', end_date = ? WHERE id = ?", { endDate, assignmentId })
     if ps.auditLog then ps.auditLog(src, 'fto_completed', 'fto', assignmentId, { trainee = a.trainee_name, note = data.note }) end
     return { success = true, completed = true, action = 'complete' }
@@ -392,8 +405,25 @@ ps.registerCallback(resourceName .. ':server:setFTOStatus', function(source, dat
     if not assignmentId or not valid[status] then return { success = false, error = 'Invalid request' } end
     if not assignmentInScope(src, assignmentId) then return { success = false, error = 'Unauthorized' } end
 
-    local a = MySQL.single.await('SELECT id, trainee_name FROM mdt_fto_assignments WHERE id = ?', { assignmentId })
+    local a = MySQL.single.await('SELECT id, trainee_citizenid, trainee_name FROM mdt_fto_assignments WHERE id = ?', { assignmentId })
     if not a then return { success = false, error = 'Assignment not found' } end
+
+    if status == 'completed' then
+        local completed, result = exports.cgn_leo_core:CompleteFieldTraining(src, a.trainee_citizenid,
+            tostring(data.reason or ('FTO assignment ' .. assignmentId .. ' completed')),
+            ('fto:%s:complete'):format(assignmentId))
+        if not completed then return { success = false, error = tostring(result) } end
+    elseif status == 'failed' then
+        local failed, result = exports.cgn_leo_core:FailFieldTraining(src, a.trainee_citizenid,
+            tostring(data.reason or ('FTO assignment ' .. assignmentId .. ' failed')),
+            ('fto:%s:failed'):format(assignmentId))
+        if not failed then return { success = false, error = tostring(result) } end
+    elseif status == 'active' then
+        local started, result = exports.cgn_leo_core:StartFieldTraining(src, a.trainee_citizenid,
+            tostring(data.reason or ('FTO assignment ' .. assignmentId .. ' reactivated')),
+            ('fto:%s:reactivate:%s'):format(assignmentId, os.time()))
+        if not started then return { success = false, error = tostring(result) } end
+    end
 
     if status == 'active' then
         -- Reactivating clears the end date.

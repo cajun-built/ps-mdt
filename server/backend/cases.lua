@@ -242,7 +242,9 @@ ps.registerCallback(resourceName .. ':server:getCaseEvidencePage', function(sour
     local total = totalRow and totalRow.total or 0
 
     local evidence = MySQL.query.await([[
-        SELECT id, title, type, serial, notes, location, stash_id, stored, last_holder, created_by, created_at, updated_at
+        SELECT id, title, type, serial, notes, location, stash_id, stored,
+            last_holder, pending_holder, transfer_requested_by, transfer_requested_at,
+            created_by, created_at, updated_at
         FROM mdt_evidence_items
         WHERE case_id = ?
         ORDER BY created_at DESC
@@ -729,27 +731,8 @@ ps.registerCallback(resourceName .. ':server:transferEvidenceItem', function(sou
     if not CheckAuth(src) then return { success = false, error = 'Unauthorized' } end
     if not CheckPermission(src, 'evidence_transfer') then return { success = false, error = 'Insufficient permissions' } end
 
-    evidenceId = tonumber(evidenceId)
-    if not evidenceId or not toCitizenId then
-        return { success = false, error = 'Invalid evidence transfer' }
-    end
-
-    local fromCitizenId = ps.getIdentifier(src)
-    MySQL.update.await('UPDATE mdt_evidence_items SET last_holder = ? WHERE id = ?', { toCitizenId, evidenceId })
-
-    MySQL.insert.await([[
-        INSERT INTO mdt_evidence_custody (evidence_id, from_citizenid, to_citizenid, action, notes)
-        VALUES (?, ?, ?, 'transferred', ?)
-    ]], { evidenceId, fromCitizenId, toCitizenId, notes or '' })
-
-    if ps.auditLog then
-        ps.auditLog(src, 'evidence_transferred', 'evidence', evidenceId, {
-            to = toCitizenId,
-            notes = notes
-        })
-    end
-
-    return { success = true }
+    local success, message = RequestEvidenceTransfer(src, evidenceId, toCitizenId, notes)
+    return { success = success, error = success and nil or message, message = message }
 end)
 
 ps.registerCallback(resourceName .. ':server:deleteEvidenceItem', function(source, evidenceId)

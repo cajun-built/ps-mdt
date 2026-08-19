@@ -25,6 +25,8 @@
 		updateEvidenceItem: (...args: any[]) => Promise<any>;
 		deleteEvidenceItem: (...args: any[]) => Promise<any>;
 		transferEvidenceItem: (...args: any[]) => Promise<any>;
+		acceptEvidenceTransfer: (...args: any[]) => Promise<any>;
+		declineEvidenceTransfer: (...args: any[]) => Promise<any>;
 		getEvidenceCustody: (...args: any[]) => Promise<any>;
 		addEvidenceImage: (...args: any[]) => Promise<any>;
 		removeEvidenceImage: (...args: any[]) => Promise<any>;
@@ -324,14 +326,36 @@
 
 	async function handleTransferEvidence() {
 		if (!selectedEvidenceId || !transferCitizenId.trim()) return;
-		await evidenceService.transferEvidenceItem(
+		const result = await evidenceService.transferEvidenceItem(
 			selectedEvidenceId,
 			transferCitizenId.trim(),
 			transferNotes.trim(),
 		);
+		showStatus(result?.success ? "Custody transfer requested" : (result?.error || "Transfer request failed"), result?.success ? "success" : "error");
 		custodyEntries = await evidenceService.getEvidenceCustody(selectedEvidenceId);
-		transferCitizenId = "";
-		transferNotes = "";
+		if (result?.success) {
+			transferCitizenId = "";
+			transferNotes = "";
+			await loadEvidence(page);
+		}
+	}
+
+	async function handleEvidenceTransferDecision(accept: boolean) {
+		if (!selectedEvidenceId) return;
+		const result = accept
+			? await evidenceService.acceptEvidenceTransfer(selectedEvidenceId, transferNotes.trim())
+			: await evidenceService.declineEvidenceTransfer(selectedEvidenceId, transferNotes.trim());
+		showStatus(
+			result?.success ? (accept ? "Evidence custody accepted" : "Evidence transfer declined") : (result?.error || "Custody update failed"),
+			result?.success ? "success" : "error",
+		);
+		if (result?.success) {
+			transferNotes = "";
+			await loadEvidence(page);
+			const refreshed = items.find((item) => item.id === selectedEvidenceId);
+			if (refreshed) selectedEvidence = refreshed;
+		}
+		custodyEntries = await evidenceService.getEvidenceCustody(selectedEvidenceId);
 	}
 
 	// ── Sidebar: add image via URL ──
@@ -655,12 +679,23 @@
 
 				<!-- Transfer Evidence -->
 				<div class="section">
-					<div class="section-title">Transfer Evidence</div>
-					<div class="transfer-row">
-						<input class="form-input" placeholder="Citizen ID" bind:value={transferCitizenId} />
-						<input class="form-input" placeholder="Transfer notes" bind:value={transferNotes} />
-						<button class="action-btn" onclick={handleTransferEvidence}>Transfer</button>
-					</div>
+					<div class="section-title">Evidence Custody</div>
+					{#if selectedEvidence?.pending_holder}
+						<div class="pending-transfer">
+							<span>Pending acceptance by {selectedEvidence.pending_holder}</span>
+							<input class="form-input" placeholder="Decision notes" bind:value={transferNotes} />
+							<div class="transfer-row">
+								<button class="action-btn" onclick={() => handleEvidenceTransferDecision(true)}>Accept Custody</button>
+								<button class="action-btn danger" onclick={() => handleEvidenceTransferDecision(false)}>Decline</button>
+							</div>
+						</div>
+					{:else}
+						<div class="transfer-row">
+							<input class="form-input" placeholder="Recipient Citizen ID" bind:value={transferCitizenId} />
+							<input class="form-input" placeholder="Transfer notes" bind:value={transferNotes} />
+							<button class="action-btn" onclick={handleTransferEvidence}>Request Transfer</button>
+						</div>
+					{/if}
 				</div>
 
 				<!-- Add Image via URL -->
@@ -1043,6 +1078,8 @@
 	/* ── Transfer Row ── */
 	.transfer-row { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; }
 	.transfer-row .form-input { flex: 1; min-width: 80px; }
+	.pending-transfer { display: flex; flex-direction: column; gap: 8px; color: rgba(251, 191, 36, 0.8); font-size: 10px; }
+	.action-btn.danger { border-color: rgba(239, 68, 68, 0.3); color: rgba(248, 113, 113, 0.9); }
 
 	/* ── Add Image URL button ── */
 	.add-image-url-btn {

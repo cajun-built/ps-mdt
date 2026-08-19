@@ -42,6 +42,14 @@ local function coreResult(ok, result, successMessage)
     return { success = false, message = tostring(result or 'Action denied') }
 end
 
+local function actionId(source, operation, payload)
+    payload = payload or {}
+    if type(payload.actionId) == 'string' and payload.actionId ~= '' then
+        return ('%s:%s'):format(payload.actionId, math.abs(joaat(operation)))
+    end
+    return ('mdt:%s:%s:%s:%s'):format(operation, source, GetGameTimer(), math.random(100000, 999999))
+end
+
 local function certificationKey(value)
     value = tostring(value or ''):lower()
     value = value:gsub('[^%w]+', '_'):gsub('^_+', ''):gsub('_+$', '')
@@ -336,13 +344,15 @@ ps.registerCallback('ps-mdt:server:updateOfficerCertifications', function(source
         for _, value in ipairs(target.certifications or {}) do current[value] = true end
         for value in pairs(desired) do
             if not current[value] or payload.expiresAt then
-                local ok, result = exports.cgn_leo_core:SetCertification(src, citizenid, value, 'active', payload.expiresAt, payload.reason)
+                local ok, result = exports.cgn_leo_core:SetCertification(src, citizenid, value, 'active', payload.expiresAt,
+                    payload.reason, actionId(src, 'certification:' .. value .. ':active', payload))
                 if not ok then return coreResult(false, result) end
             end
         end
         for value in pairs(current) do
             if not desired[value] then
-                local ok, result = exports.cgn_leo_core:SetCertification(src, citizenid, value, 'revoked', nil, payload.reason)
+                local ok, result = exports.cgn_leo_core:SetCertification(src, citizenid, value, 'revoked', nil,
+                    payload.reason, actionId(src, 'certification:' .. value .. ':revoked', payload))
                 if not ok then return coreResult(false, result) end
             end
         end
@@ -433,7 +443,8 @@ ps.registerCallback('ps-mdt:server:promoteOfficer', function(source, payload)
     end
 
     if isLeoSource(src) then
-        local ok, result = exports.cgn_leo_core:ChangeRank(src, citizenid, newGrade, payload.reason)
+        local ok, result = exports.cgn_leo_core:ChangeRank(src, citizenid, newGrade, payload.reason,
+            actionId(src, 'rank', payload))
         return coreResult(ok, result, 'Officer rank updated')
     end
 
@@ -492,7 +503,8 @@ ps.registerCallback('ps-mdt:server:fireOfficer', function(source, payload)
     end
 
     if isLeoSource(src) then
-        local ok, result = exports.cgn_leo_core:ChangeStatus(src, citizenid, 'separated', payload.reason)
+        local ok, result = exports.cgn_leo_core:ChangeStatus(src, citizenid, 'separated', payload.reason,
+            actionId(src, 'separate', payload))
         return coreResult(ok, result, 'Officer has been separated')
     end
 
@@ -559,7 +571,8 @@ ps.registerCallback('ps-mdt:server:updateOfficerCallsign', function(source, payl
     end
 
     if isLeoSource(src) then
-        local ok, result = exports.cgn_leo_core:ChangeCallsign(src, citizenid, newCallsign, payload.reason)
+        local ok, result = exports.cgn_leo_core:ChangeCallsign(src, citizenid, newCallsign, payload.reason,
+            actionId(src, 'callsign', payload))
         return coreResult(ok, result, 'Callsign updated to ' .. newCallsign)
     end
 
@@ -594,7 +607,7 @@ ps.registerCallback('ps-mdt:server:hireOfficer', function(source, payload)
         badge = payload.badge,
         callsign = payload.callsign,
         reason = payload.reason,
-    })
+    }, actionId(source, 'hire', payload))
     return coreResult(ok, result, 'Officer hired at entry rank')
 end)
 
@@ -603,7 +616,8 @@ ps.registerCallback('ps-mdt:server:updateOfficerBadge', function(source, payload
         return { success = false, message = 'Unauthorized' }
     end
     payload = payload or {}
-    local ok, result = exports.cgn_leo_core:ChangeBadge(source, payload.citizenid, payload.badge, payload.reason)
+    local ok, result = exports.cgn_leo_core:ChangeBadge(source, payload.citizenid, payload.badge, payload.reason,
+        actionId(source, 'badge', payload))
     return coreResult(ok, result, 'Badge number updated')
 end)
 
@@ -613,7 +627,7 @@ ps.registerCallback('ps-mdt:server:updateOfficerAssignment', function(source, pa
     end
     payload = payload or {}
     local ok, result = exports.cgn_leo_core:SetAssignment(source, payload.citizenid, payload.assignment,
-        payload.primary == true, payload.active ~= false, payload.reason)
+        payload.primary == true, payload.active ~= false, payload.reason, actionId(source, 'assignment', payload))
     return coreResult(ok, result, 'Assignment updated')
 end)
 
@@ -622,7 +636,8 @@ ps.registerCallback('ps-mdt:server:updateOfficerStatus', function(source, payloa
         return { success = false, message = 'Unauthorized' }
     end
     payload = payload or {}
-    local ok, result = exports.cgn_leo_core:ChangeStatus(source, payload.citizenid, payload.status, payload.reason)
+    local ok, result = exports.cgn_leo_core:ChangeStatus(source, payload.citizenid, payload.status, payload.reason,
+        actionId(source, 'status', payload))
     return coreResult(ok, result, 'Employment status updated')
 end)
 
@@ -632,7 +647,7 @@ ps.registerCallback('ps-mdt:server:transferOfficer', function(source, payload)
     end
     payload = payload or {}
     local ok, result = exports.cgn_leo_core:Transfer(source, payload.citizenid, payload.agency,
-        tonumber(payload.grade), payload.reason)
+        tonumber(payload.grade), payload.reason, actionId(source, 'transfer', payload))
     return coreResult(ok, result, 'Officer transferred')
 end)
 
@@ -642,7 +657,7 @@ ps.registerCallback('ps-mdt:server:updateOfficerCompartment', function(source, p
     end
     payload = payload or {}
     local ok, result = exports.cgn_leo_core:SetCompartment(source, payload.citizenid, payload.compartment,
-        payload.active == true, payload.expiresAt, payload.reason)
+        payload.active == true, payload.expiresAt, payload.reason, actionId(source, 'compartment', payload))
     return coreResult(ok, result, 'Protected access updated')
 end)
 
@@ -652,7 +667,7 @@ ps.registerCallback('ps-mdt:server:grantOfficerPermission', function(source, pay
     end
     payload = payload or {}
     local ok, result = exports.cgn_leo_core:GrantTemporaryPermission(source, payload.citizenid,
-        payload.permission, payload.expiresAt, payload.reason)
+        payload.permission, payload.expiresAt, payload.reason, actionId(source, 'permission_grant', payload))
     return coreResult(ok, result, 'Temporary permission granted')
 end)
 
@@ -662,6 +677,6 @@ ps.registerCallback('ps-mdt:server:restrictOfficerPermission', function(source, 
     end
     payload = payload or {}
     local ok, result = exports.cgn_leo_core:SetRestriction(source, payload.citizenid, payload.permission,
-        payload.active == true, payload.expiresAt, payload.reason)
+        payload.active == true, payload.expiresAt, payload.reason, actionId(source, 'restriction', payload))
     return coreResult(ok, result, 'Permission restriction updated')
 end)
