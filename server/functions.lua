@@ -1,5 +1,9 @@
 function GetActiveUnits()
-    return ps.getJobCount("police")
+    local count = 0
+    for _, jobName in ipairs((Config and Config.PoliceJobs) or {}) do
+        count = count + (ps.getJobCount(jobName) or 0)
+    end
+    return count
 end
 
 --- Normalise a free-text search query for consistent, predictable LIKE matching
@@ -512,7 +516,7 @@ function SendCitizenMail(citizenid, sender, subject, message)
     local sent = pcall(function()
         exports[res]:SendMail({
             to      = email,
-            sender  = sender or 'Los Santos Police Department',
+            sender  = sender or 'Capital Region Law Enforcement',
             subject = subject or '',
             message = message or '',
         })

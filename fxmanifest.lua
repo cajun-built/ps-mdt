@@ -12,6 +12,7 @@ ui_page 'web/dist/index.html'
 
 dependencies {
   'ps_lib',
+  'cgn_leo_core',
   'oxmysql',
   'ox_lib'
 }

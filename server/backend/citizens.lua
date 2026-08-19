@@ -733,6 +733,7 @@ end)
 ps.registerCallback(resourceName .. ':server:updateCitizenLicense', function(source, payload)
     local src = source
     if not CheckAuth(src) then return { success = false, message = 'Unauthorized' } end
+    if not CheckPermission(src, 'bolos_create') then return { success = false, message = 'Insufficient permissions' } end
 
     payload = payload or {}
     local citizenId = payload.citizenid
@@ -884,6 +885,7 @@ end)
 ps.registerCallback(resourceName .. ':server:createBolo', function(source, payload)
     local src = source
     if not CheckAuth(src) then return { success = false, message = 'Unauthorized' } end
+    if not CheckPermission(src, 'bolos_create') then return { success = false, message = 'Insufficient permissions' } end
 
     payload = payload or {}
     local boloType = payload.type or 'citizen'
@@ -938,6 +940,7 @@ end)
 ps.registerCallback(resourceName .. ':server:deleteBolo', function(source, payload)
     local src = source
     if not CheckAuth(src) then return { success = false, message = 'Unauthorized' } end
+    if IsLeoMdtSource(src) then return { success = false, message = 'Submitted BOLOs are permanent records and cannot be deleted' } end
 
     payload = payload or {}
     local id = tonumber(payload.id)

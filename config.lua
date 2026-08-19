@@ -39,28 +39,7 @@ Config.Sharing = {
         }
     },
 
-    -- One-Way Sharing (Unidirectional)
-    -- Viewers can see target department data, but not vice versa
-    OneWay = {
-        { -- Example: FIB and GOV 
-            viewers = {
-                'fib',
-                'gov'
-            },
-            targets = {
-                'brpd',
-                'ebrso',
-                'lsp'
-            },
-            types = {
-                'reports',
-                'bodycams',
-                'evidence',
-                'bolos',
-                'warrants',
-            }
-        },
-    },
+    OneWay = {},
 }
 
 -- Keybinds
@@ -139,7 +118,7 @@ Config.Phone = {
 
     -- Court messaging (uses the same Resource above)
     SmsSenderNumber = 'SA-COURT',                 -- "from" number shown on reminder SMS (any string lb-phone accepts)
-    MailSender      = 'San Andreas Judicial System', -- sender shown in the recipient's inbox
+    MailSender      = 'Louisiana Judicial System', -- sender shown in the recipient's inbox
 }
 
 
@@ -446,8 +425,6 @@ Config.PoliceJobs = {
     'brpd',
     'ebrso',
     'lsp',
-    'fib',
-    'gov'
 }
 
 Config.DojJobType = "doj"

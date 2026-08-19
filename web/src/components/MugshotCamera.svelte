@@ -130,7 +130,7 @@
 				<span class="subject-label">MUGSHOT - {citizenName}</span>
 			</div>
 			<div class="status-right">
-				<span class="dept-label">LSPD</span>
+				<span class="dept-label">CGN LEO</span>
 			</div>
 		</div>
 

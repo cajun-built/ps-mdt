@@ -1,5 +1,18 @@
 local resourceName = tostring(GetCurrentResourceName())
 
+local function leoPersonnel(citizenid)
+    if GetResourceState('cgn_leo_core') ~= 'started' then return nil end
+    local ok, personnel = pcall(function() return exports.cgn_leo_core:GetPersonnel(citizenid, true) end)
+    return ok and personnel or nil
+end
+
+local function sameLeoAgency(source, targetCitizenId)
+    if not IsLeoMdtSource(source) then return true end
+    local actor = leoPersonnel(ps.getIdentifier(source))
+    local target = leoPersonnel(targetCitizenId)
+    return actor ~= nil and target ~= nil and actor.agency == target.agency
+end
+
 -- Phase 2: PPR records are domain-scoped (police vs ems) so each side only sees
 -- its own personnel reviews. Existing rows default to 'police' (historically the
 -- only domain). New rows are tagged from the author's live domain.
@@ -39,6 +52,11 @@ ps.registerCallback(resourceName .. ':server:getPPRList', function(source, pageN
     if not hasPPRView then
         clauses[#clauses + 1] = 'officer_citizenid = ?'
         values[#values + 1] = citizenId
+    elseif IsLeoMdtSource(src) then
+        local actor = leoPersonnel(citizenId)
+        if not actor then return { entries = {}, hasMore = false } end
+        clauses[#clauses + 1] = 'officer_citizenid IN (SELECT citizenid FROM cgn_leo_personnel WHERE agency = ?)'
+        values[#values + 1] = actor.agency
     end
 
     if filters.category and filters.category ~= '' then
@@ -100,6 +118,9 @@ ps.registerCallback(resourceName .. ':server:getPPR', function(source, data)
     if not hasPPRView and entry.officer_citizenid ~= citizenId then
         return { success = false, error = 'Unauthorized' }
     end
+    if entry.officer_citizenid ~= citizenId and not sameLeoAgency(src, entry.officer_citizenid) then
+        return { success = false, error = 'Unauthorized' }
+    end
 
     local nOk, notes = pcall(MySQL.query.await, [[
         SELECT id, ppr_id, content, author_citizenid, author_name, created_at
@@ -130,6 +151,7 @@ ps.registerCallback(resourceName .. ':server:getOfficerPPRHistory', function(sou
     if not hasPPRView and officerCitizenId ~= citizenId then
         return {}
     end
+    if officerCitizenId ~= citizenId and not sameLeoAgency(src, officerCitizenId) then return {} end
 
     local ok, rows = pcall(MySQL.query.await, [[
         SELECT id, ppr_number, category, title, author_name, incident_date, created_at
@@ -162,6 +184,9 @@ ps.registerCallback(resourceName .. ':server:createPPR', function(source, data)
 
     if officerCitizenId == '' or officerName == '' then
         return { success = false, error = 'Officer is required' }
+    end
+    if not sameLeoAgency(src, officerCitizenId) then
+        return { success = false, error = 'Officer is outside your agency' }
     end
 
     local pprId = MySQL.insert.await([[
@@ -204,6 +229,10 @@ ps.registerCallback(resourceName .. ':server:updatePPR', function(source, pprId,
     pprId = tonumber(pprId)
     updates = updates or {}
     if not pprId then return { success = false, error = 'Invalid PPR id' } end
+    local target = MySQL.single.await('SELECT officer_citizenid FROM mdt_ppr WHERE id = ?', { pprId })
+    if not target or not sameLeoAgency(src, target.officer_citizenid) then
+        return { success = false, error = 'Unauthorized' }
+    end
 
     local sets = {}
     local vals = {}
@@ -229,6 +258,7 @@ end)
 ps.registerCallback(resourceName .. ':server:deletePPR', function(source, pprId)
     local src = source
     if not CheckAuth(src) then return { success = false, error = 'Unauthorized' } end
+    if IsLeoMdtSource(src) then return { success = false, error = 'Submitted PPRs are permanent records and cannot be deleted' } end
     if not CheckPermission(src, 'ppr_manage') then
         return { success = false, error = 'No permission to delete PPR entries' }
     end
@@ -252,6 +282,10 @@ ps.registerCallback(resourceName .. ':server:addPPRNote', function(source, pprId
     if not pprId or not content or content == '' then
         return { success = false, error = 'Invalid PPR id or empty note' }
     end
+    local target = MySQL.single.await('SELECT officer_citizenid FROM mdt_ppr WHERE id = ?', { pprId })
+    if not target or not sameLeoAgency(src, target.officer_citizenid) then
+        return { success = false, error = 'Unauthorized' }
+    end
 
     local citizenId = ps.getIdentifier(src)
     local profile = MySQL.single.await('SELECT fullname FROM mdt_profiles WHERE citizenid = ?', { citizenId })
@@ -269,6 +303,7 @@ end)
 ps.registerCallback(resourceName .. ':server:deletePPRNote', function(source, noteId, pprId)
     local src = source
     if not CheckAuth(src) then return { success = false, error = 'Unauthorized' } end
+    if IsLeoMdtSource(src) then return { success = false, error = 'Submitted PPR notes are permanent records and cannot be deleted' } end
     if not CheckPermission(src, 'ppr_manage') then
         return { success = false, error = 'No permission to delete PPR notes' }
     end

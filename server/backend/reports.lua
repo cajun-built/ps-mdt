@@ -221,6 +221,7 @@ end
 ps.registerCallback(resourceName .. ':server:getReports', function(source, page, filters)
     local src = source
     if not CheckAuth(src) then return end
+    if not CheckPermission(src, 'reports_create') then return { success = false, error = 'Insufficient permissions' } end
 
     local identifier = ps.getIdentifier(src)
     local job = ps.getJobName(src)
@@ -898,6 +899,7 @@ end)
 ps.registerCallback(resourceName..':server:updateReportContent', function(source, reportid, content, reportData)
     local src = source
     if not CheckAuth(src) then return { success = false, error = "Unauthorized" } end
+    if not CheckPermission(src, 'reports_create') then return { success = false, error = 'Insufficient permissions' } end
 
     if not content then
         return { success = false, error = "Missing content" }
@@ -969,6 +971,8 @@ end)
 ps.registerCallback(resourceName..':server:deleteReport', function(source, reportId)
     local src = source
     if not CheckAuth(src) then return end
+    if IsLeoMdtSource(src) then return { success = false, error = 'Submitted reports are permanent records and cannot be deleted' } end
+    if not CheckPermission(src, 'reports_delete') then return { success = false, error = 'Insufficient permissions' } end
 
     reportId = tonumber(reportId)
     if not reportId then

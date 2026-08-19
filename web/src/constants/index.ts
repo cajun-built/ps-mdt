@@ -209,8 +209,8 @@ export const DEFAULT_DATE = "Loading...";
 /** App version and branding per job type */
 export const APP_INFO = {
 	leo: {
-		version: "LSPD MDT System v3.0",
-		title: "Los Santos Police Department",
+		version: "CGN LEO MDT v1.0",
+		title: "Capital Region Law Enforcement",
 		subtitle: "Mobile Data Terminal",
 		footerSubtext: "Authorized Personnel Only",
 		icon: "local_police",

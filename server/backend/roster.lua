@@ -25,6 +25,45 @@ local function getCertifications(citizenid)
     return {}
 end
 
+local function getCorePersonnel(citizenid)
+    if GetResourceState('cgn_leo_core') ~= 'started' then return nil end
+    local ok, personnel = pcall(function()
+        return exports.cgn_leo_core:GetPersonnel(citizenid, true)
+    end)
+    return ok and personnel or nil
+end
+
+local function isLeoSource(source)
+    return ps.getJobType(source) == Config.PoliceJobType
+end
+
+local function coreResult(ok, result, successMessage)
+    if ok then return { success = true, message = successMessage, personnel = result } end
+    return { success = false, message = tostring(result or 'Action denied') }
+end
+
+local function certificationKey(value)
+    value = tostring(value or ''):lower()
+    value = value:gsub('[^%w]+', '_'):gsub('^_+', ''):gsub('_+$', '')
+    local aliases = {
+        fto = 'field_training_officer',
+        k9_certified = 'k9',
+        air_certified = 'air',
+    }
+    return aliases[value] or value
+end
+
+local function certificationLabels(values)
+    local labels = {
+        evidence_handling = 'Evidence Handling', incident_command = 'Incident Command',
+        radar = 'Radar', instructor = 'Instructor', field_training_officer = 'Field Training Officer',
+        k9 = 'K9', swat = 'SWAT', air = 'Air', interceptor = 'Interceptor',
+    }
+    local result = {}
+    for _, value in ipairs(values or {}) do result[#result + 1] = labels[value] or value end
+    return result
+end
+
 -- Resolve a human-facing department label. Prefers the live job's label (online
 -- players), falls back to the shared job config's label (offline / DB rows), and
 -- finally the raw job name. Avoids showing the internal id like "police" as DEPT.
@@ -42,6 +81,13 @@ local function buildRosterFromQbx(jobList, matchFn, defaultDept)
     local activeUnits = {}
     local members = {}
     local qbx = exports['qbx_core']
+
+    if GetResourceState('cgn_leo_core') == 'started' and defaultDept == 'police' then
+        local ok, personnel = pcall(function() return exports.cgn_leo_core:ListPersonnel() end)
+        if ok then
+            for _, member in ipairs(personnel or {}) do members[member.citizenid] = true end
+        end
+    end
 
     for _, jobName in ipairs(jobList) do
         local groupMembers = qbx:GetGroupMembers(jobName, 'job') or {}
@@ -80,21 +126,28 @@ local function buildRosterFromQbx(jobList, matchFn, defaultDept)
             local rank = job.grade and job.grade.name or 'Officer'
             local department = job.name or defaultDept
             local departmentLabel = deptLabel(job.name, job) or department
-            local certifications = getCertifications(citizenid)
+            local corePersonnel = job.type == Config.PoliceJobType and getCorePersonnel(citizenid) or nil
+            local certifications = corePersonnel and certificationLabels(corePersonnel.certifications) or getCertifications(citizenid)
 
             local onlineSrc = onlinePlayer and (onlinePlayer.PlayerData and onlinePlayer.PlayerData.source or onlinePlayer.source) or nil
             rosterList[#rosterList + 1] = {
                 id = #rosterList + 1,
                 citizenid = citizenid,
-                callsign = callsign,
+                callsign = corePersonnel and corePersonnel.callsign or callsign,
                 firstName = data.charinfo and data.charinfo.firstname or 'N/A',
                 lastName = data.charinfo and data.charinfo.lastname or 'N/A',
-                rank = rank,
-                department = department,
-                departmentLabel = departmentLabel,
+                rank = corePersonnel and corePersonnel.rankName or rank,
+                department = corePersonnel and corePersonnel.agency or department,
+                departmentLabel = corePersonnel and corePersonnel.agencyLabel or departmentLabel,
                 status = (onlinePlayer and job.onduty) and 'On Duty' or 'Off Duty',
                 certifications = certifications,
-                badgeNumber = callsign,
+                badgeNumber = corePersonnel and corePersonnel.badge or callsign,
+                employmentStatus = corePersonnel and corePersonnel.status or nil,
+                assignments = corePersonnel and corePersonnel.assignments or {},
+                primaryAssignment = corePersonnel and corePersonnel.primaryAssignment or nil,
+                compartments = corePersonnel and corePersonnel.compartments or {},
+                grants = corePersonnel and corePersonnel.grants or {},
+                restrictions = corePersonnel and corePersonnel.restrictions or {},
                 radioChannel = getRadioChannel(onlineSrc)
             }
 
@@ -131,6 +184,7 @@ local function checkDuty(citizenid, matchFn)
 end
 
 ps.registerCallback('ps-mdt:server:getRosterList', function(source)
+    if not CheckAuth(source) then return { roster = {}, activeUnits = {} } end
     -- Scope the roster to the caller's domain: EMS sees EMS, police sees police.
     local domain = GetMdtDomain(source)
     local jobList, matchFn, defaultDept, scopeJobType
@@ -222,6 +276,20 @@ ps.registerCallback('ps-mdt:server:getOfficerTags', function(source)
     local src = source
     if not CheckAuth(src) then return {} end
 
+    if isLeoSource(src) then
+        return {
+            { id = 1, name = 'Evidence Handling', color = '#D4A72C', description = 'Evidence intake, custody and transfer qualification' },
+            { id = 2, name = 'Incident Command', color = '#C2410C', description = 'Major incident command qualification' },
+            { id = 3, name = 'Radar', color = '#2563EB', description = 'Speed enforcement equipment qualification' },
+            { id = 4, name = 'Instructor', color = '#7C3AED', description = 'Agency instructor qualification' },
+            { id = 5, name = 'Field Training Officer', color = '#059669', description = 'Field training officer qualification' },
+            { id = 6, name = 'K9', color = '#0891B2', description = 'K9 operations qualification' },
+            { id = 7, name = 'SWAT', color = '#DC2626', description = 'Tactical team qualification' },
+            { id = 8, name = 'Air', color = '#4F46E5', description = 'Aviation operations qualification' },
+            { id = 9, name = 'Interceptor', color = '#9333EA', description = 'High performance vehicle qualification' },
+        }
+    end
+
     local jobType = ps.getJobType(src)
     local rows
     if jobType and (jobType == 'leo' or jobType == 'ems') then
@@ -255,6 +323,30 @@ ps.registerCallback('ps-mdt:server:updateOfficerCertifications', function(source
 
     if not citizenid or type(certifications) ~= 'table' then
         return { success = false, message = 'Invalid payload' }
+    end
+
+    if isLeoSource(src) then
+        if type(payload.reason) ~= 'string' or #payload.reason < 3 then
+            return { success = false, message = 'A written reason is required' }
+        end
+        local target = getCorePersonnel(citizenid)
+        if not target then return { success = false, message = 'LEO personnel record not found' } end
+        local desired, current = {}, {}
+        for _, value in ipairs(certifications) do desired[certificationKey(value)] = true end
+        for _, value in ipairs(target.certifications or {}) do current[value] = true end
+        for value in pairs(desired) do
+            if not current[value] or payload.expiresAt then
+                local ok, result = exports.cgn_leo_core:SetCertification(src, citizenid, value, 'active', payload.expiresAt, payload.reason)
+                if not ok then return coreResult(false, result) end
+            end
+        end
+        for value in pairs(current) do
+            if not desired[value] then
+                local ok, result = exports.cgn_leo_core:SetCertification(src, citizenid, value, 'revoked', nil, payload.reason)
+                if not ok then return coreResult(false, result) end
+            end
+        end
+        return { success = true, message = 'Certifications updated' }
     end
 
     EnsureProfileExists(citizenid)
@@ -340,6 +432,11 @@ ps.registerCallback('ps-mdt:server:promoteOfficer', function(source, payload)
         return { success = false, message = 'Missing required fields' }
     end
 
+    if isLeoSource(src) then
+        local ok, result = exports.cgn_leo_core:ChangeRank(src, citizenid, newGrade, payload.reason)
+        return coreResult(ok, result, 'Officer rank updated')
+    end
+
     -- Validate the grade exists
     local gradeData = ps.getSharedJobGrade(jobName, newGrade)
     if not gradeData then
@@ -392,6 +489,11 @@ ps.registerCallback('ps-mdt:server:fireOfficer', function(source, payload)
 
     if not citizenid then
         return { success = false, message = 'Missing citizen ID' }
+    end
+
+    if isLeoSource(src) then
+        local ok, result = exports.cgn_leo_core:ChangeStatus(src, citizenid, 'separated', payload.reason)
+        return coreResult(ok, result, 'Officer has been separated')
     end
 
     local targetPlayer = ps.getPlayerByIdentifier(citizenid)
@@ -456,6 +558,11 @@ ps.registerCallback('ps-mdt:server:updateOfficerCallsign', function(source, payl
         return { success = false, message = 'Missing citizen ID or callsign' }
     end
 
+    if isLeoSource(src) then
+        local ok, result = exports.cgn_leo_core:ChangeCallsign(src, citizenid, newCallsign, payload.reason)
+        return coreResult(ok, result, 'Callsign updated to ' .. newCallsign)
+    end
+
     local targetSource = GetFrameworkPlayerSource(citizenid)
     if not targetSource then
         return { success = false, message = 'Officer must be online to update callsign' }
@@ -475,4 +582,86 @@ ps.registerCallback('ps-mdt:server:updateOfficerCallsign', function(source, payl
     end
 
     return { success = true, message = 'Callsign updated to ' .. newCallsign }
+end)
+
+ps.registerCallback('ps-mdt:server:hireOfficer', function(source, payload)
+    if not CheckAuth(source) or not isLeoSource(source) then
+        return { success = false, message = 'Unauthorized' }
+    end
+    payload = payload or {}
+    local ok, result = exports.cgn_leo_core:Hire(source, {
+        citizenid = payload.citizenid,
+        badge = payload.badge,
+        callsign = payload.callsign,
+        reason = payload.reason,
+    })
+    return coreResult(ok, result, 'Officer hired at entry rank')
+end)
+
+ps.registerCallback('ps-mdt:server:updateOfficerBadge', function(source, payload)
+    if not CheckAuth(source) or not isLeoSource(source) then
+        return { success = false, message = 'Unauthorized' }
+    end
+    payload = payload or {}
+    local ok, result = exports.cgn_leo_core:ChangeBadge(source, payload.citizenid, payload.badge, payload.reason)
+    return coreResult(ok, result, 'Badge number updated')
+end)
+
+ps.registerCallback('ps-mdt:server:updateOfficerAssignment', function(source, payload)
+    if not CheckAuth(source) or not isLeoSource(source) then
+        return { success = false, message = 'Unauthorized' }
+    end
+    payload = payload or {}
+    local ok, result = exports.cgn_leo_core:SetAssignment(source, payload.citizenid, payload.assignment,
+        payload.primary == true, payload.active ~= false, payload.reason)
+    return coreResult(ok, result, 'Assignment updated')
+end)
+
+ps.registerCallback('ps-mdt:server:updateOfficerStatus', function(source, payload)
+    if not CheckAuth(source) or not isLeoSource(source) then
+        return { success = false, message = 'Unauthorized' }
+    end
+    payload = payload or {}
+    local ok, result = exports.cgn_leo_core:ChangeStatus(source, payload.citizenid, payload.status, payload.reason)
+    return coreResult(ok, result, 'Employment status updated')
+end)
+
+ps.registerCallback('ps-mdt:server:transferOfficer', function(source, payload)
+    if not CheckAuth(source) or not isLeoSource(source) then
+        return { success = false, message = 'Unauthorized' }
+    end
+    payload = payload or {}
+    local ok, result = exports.cgn_leo_core:Transfer(source, payload.citizenid, payload.agency,
+        tonumber(payload.grade), payload.reason)
+    return coreResult(ok, result, 'Officer transferred')
+end)
+
+ps.registerCallback('ps-mdt:server:updateOfficerCompartment', function(source, payload)
+    if not CheckAuth(source) or not isLeoSource(source) then
+        return { success = false, message = 'Unauthorized' }
+    end
+    payload = payload or {}
+    local ok, result = exports.cgn_leo_core:SetCompartment(source, payload.citizenid, payload.compartment,
+        payload.active == true, payload.expiresAt, payload.reason)
+    return coreResult(ok, result, 'Protected access updated')
+end)
+
+ps.registerCallback('ps-mdt:server:grantOfficerPermission', function(source, payload)
+    if not CheckAuth(source) or not isLeoSource(source) then
+        return { success = false, message = 'Unauthorized' }
+    end
+    payload = payload or {}
+    local ok, result = exports.cgn_leo_core:GrantTemporaryPermission(source, payload.citizenid,
+        payload.permission, payload.expiresAt, payload.reason)
+    return coreResult(ok, result, 'Temporary permission granted')
+end)
+
+ps.registerCallback('ps-mdt:server:restrictOfficerPermission', function(source, payload)
+    if not CheckAuth(source) or not isLeoSource(source) then
+        return { success = false, message = 'Unauthorized' }
+    end
+    payload = payload or {}
+    local ok, result = exports.cgn_leo_core:SetRestriction(source, payload.citizenid, payload.permission,
+        payload.active == true, payload.expiresAt, payload.reason)
+    return coreResult(ok, result, 'Permission restriction updated')
 end)
