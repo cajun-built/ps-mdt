@@ -1,5 +1,31 @@
 local resourceName = tostring(GetCurrentResourceName())
 
+local dutyWorkplaces = {
+    brpd = 'BRPD Headquarters',
+    ebrso = 'EBRSO Headquarters',
+    lsp = 'LSP Troop Headquarters',
+}
+
+local dutyDenialMessages = {
+    duplicate_action = 'Please wait a moment and try again.',
+    grade_mismatch = 'Your MDT rank does not match your current job grade. Contact command staff.',
+    identity_unavailable = 'Your LEO personnel record could not be verified. Contact command staff.',
+    job_mismatch = 'Your LEO personnel record does not match your current job. Contact command staff.',
+    service_unavailable = 'The LEO duty service is unavailable. Try again shortly.',
+}
+
+local function formatDutyDenial(reason)
+    if reason == 'workplace_required' then
+        local job = ps.getJob()
+        local jobName = type(job) == 'table' and job.name or nil
+        local workplace = dutyWorkplaces[jobName] or 'your agency headquarters'
+        return ('You must be at %s to go on duty.'):format(workplace)
+    end
+
+    return dutyDenialMessages[reason]
+        or 'You are not authorized to go on duty. Contact command staff if this continues.'
+end
+
 local function _isDojJob(jobName)
     if not jobName or not Config.DojJobs then return false end
     for _, name in ipairs(Config.DojJobs) do
@@ -121,7 +147,7 @@ RegisterNUICallback('toggleDuty', function(_, cb)
     local result = ps.callback(resourceName .. ':server:setLeoDuty', desiredDuty)
     cb(result or { success = false, reason = 'service_unavailable' })
     if not result or not result.success then
-        ps.notify(('Duty request denied: %s'):format(result and result.reason or 'service_unavailable'), 'error')
+        ps.notify(formatDutyDenial(result and result.reason or 'service_unavailable'), 'error')
     end
     Wait(100)
     NUIUpdateAuth()
