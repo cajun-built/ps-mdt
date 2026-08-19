@@ -13,6 +13,7 @@ ui_page 'web/dist/index.html'
 dependencies {
   'ps_lib',
   'cgn_leo_core',
+  'cgn_leo_fleet',
   'ps-dispatch',
   'oxmysql',
   'ox_lib'
