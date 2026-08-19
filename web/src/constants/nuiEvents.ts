@@ -134,6 +134,13 @@ export const NUI_EVENTS = {
 		UPDATE_VEHICLE: "updateVehicle",
 		GET_REPORTS_BY_PLATE: "getReportsByPlate",
 	},
+	FLEET: {
+		GET_BOOTSTRAP: "getFleetBootstrap",
+		COMMISSION: "commissionFleetVehicle",
+		ASSIGN: "assignFleetVehicle",
+		SET_STATUS: "setFleetVehicleStatus",
+		RENUMBER: "renumberFleetVehicle",
+	},
 	IMPOUND: {
 		IMPOUND_VEHICLE: "impoundVehicle",
 		RELEASE_IMPOUND: "releaseImpound",
@@ -425,6 +432,7 @@ export const ALL_NUI_EVENTS = [
 	...Object.values(NUI_EVENTS.REPORT),
 	...Object.values(NUI_EVENTS.CITIZEN),
 	...Object.values(NUI_EVENTS.VEHICLE),
+	...Object.values(NUI_EVENTS.FLEET),
 	...Object.values(NUI_EVENTS.WEAPON),
 	...Object.values(NUI_EVENTS.CHARGE),
 	...Object.values(NUI_EVENTS.WARRANT),

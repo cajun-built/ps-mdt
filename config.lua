@@ -602,6 +602,12 @@ Config.ManagementPermissions = {
     -- Vehicles
     'vehicles_search',
     'vehicles_edit_dmv',
+    'fleet.view',
+    'fleet.checkout',
+    'fleet.manage',
+    'fleet.commission',
+    'fleet.assign',
+    'fleet.override',
     -- Weapons
     'weapons_search',
     'weapons_add',

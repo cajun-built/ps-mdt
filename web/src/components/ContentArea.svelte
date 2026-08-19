@@ -21,6 +21,7 @@
 	import Weapons from "../pages/Weapons.svelte";
 	import Cases from "../pages/Cases.svelte";
 	import Evidence from "../pages/Evidence.svelte";
+	import Fleet from "../pages/Fleet.svelte";
 	import Cameras from "../pages/Cameras.svelte";
 	import Bodycams from "../pages/Bodycams.svelte";
 	import Awards from "../pages/Awards.svelte";
@@ -115,6 +116,7 @@
 		weapons: ["weapons_search", "weapons_add"],
 		cases: ["cases_view", "cases_create"],
 		evidence: ["evidence_view", "evidence_create"],
+		fleet: ["fleet.view", "fleet.checkout", "fleet.manage", "fleet.commission", "fleet.assign"],
 		reports: ["reports_view", "reports_create"],
 		warrants: ["warrants_view", "warrants_issue"],
 		charges: ["charges_view", "charges_edit"],
@@ -227,6 +229,8 @@
 			<Cases {tabService} />
 		{:else if String(activeComponent) === "evidence"}
 			<Evidence {tabService} />
+		{:else if activeComponent === "fleet"}
+			<Fleet {authService} />
 		{:else if activeComponent === "cameras"}
 			<Cameras />
 		{:else if activeComponent === "bodycams"}

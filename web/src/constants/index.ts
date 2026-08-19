@@ -5,6 +5,7 @@ export const MDT_TABS = [
 	{ name: "Reports", icon: "description" },
 	{ name: "Cases", icon: "folder" },
 	{ name: "Evidence", icon: "inventory_2" },
+	{ name: "Fleet", icon: "garage" },
 	{ name: "BOLOs", icon: "notification_important" },
 	{ name: "Warrants", icon: "gavel" },
 	{ name: "Vehicles", icon: "directions_car" },
@@ -80,7 +81,7 @@ export interface NavGroup {
 
 export const NAV_GROUPS: NavGroup[] = [
 	{ id: "dashboard", tabs: ["Dashboard", "Bulletin Board"] },
-	{ id: "operations", label: "Operations", icon: "assignment", tabs: ["Reports", "Cases", "Evidence", "BOLOs", "Warrants"] },
+	{ id: "operations", label: "Operations", icon: "assignment", tabs: ["Reports", "Cases", "Evidence", "Fleet", "BOLOs", "Warrants"] },
 	{ id: "records", label: "Records", icon: "folder_open", tabs: ["Citizens", "Vehicles", "Weapons", "Charges"] },
 	{ id: "personnel", label: "Personnel", icon: "badge", tabs: ["Roster", "Awards", "IA", "PPR", "FTO", "SOP", "Calendar"] },
 	{ id: "surveillance", label: "Surveillance", icon: "visibility", tabs: ["Map", "Cameras", "Bodycams"] },
@@ -153,6 +154,7 @@ export type ComponentId =
 	| "weapons"
 	| "cases"
 	| "evidence"
+	| "fleet"
 	| "reports"
 	| "warrants"
 	| "charges"
@@ -183,6 +185,7 @@ export const TAB_TO_COMPONENT_MAP: Record<MDTTab, ComponentId> = {
 	Weapons: "weapons",
 	Cases: "cases",
 	Evidence: "evidence",
+	Fleet: "fleet",
 	Reports: "reports",
 	Warrants: "warrants",
 	Charges: "charges",
@@ -260,6 +263,7 @@ export const COMPONENT_DISPLAY_NAMES: Record<ComponentId, string> = {
 	weapons: "Weapons",
 	cases: "Cases",
 	evidence: "Evidence",
+	fleet: "Fleet",
 	reports: "Reports",
 	warrants: "Warrants",
 	charges: "Charges",
