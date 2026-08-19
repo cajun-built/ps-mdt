@@ -3,6 +3,48 @@ local resourceName = tostring(GetCurrentResourceName())
 -- In-memory state for active report editing sessions
 local activeReportSessions = {}
 
+local MAX_YJS_UPDATE_BYTES = 262144
+local MAX_YJS_SESSION_BYTES = 8388608
+local MAX_STRUCTURED_DATA_BYTES = 262144
+local MAX_AWARENESS_BYTES = 65536
+local MAX_SYNC_EVENTS_PER_SECOND = 120
+local collaborationWindows = {}
+
+local allowedStructuredTypes = {
+    title = true,
+    type = true,
+    officers = true,
+    suspects = true,
+    victims = true,
+    evidence = true,
+    charges = true,
+    vehicles = true,
+    tags = true,
+}
+
+local function encodedSize(value)
+    if type(value) == 'string' then return #value end
+
+    local ok, encoded = pcall(json.encode, value)
+    if not ok or type(encoded) ~= 'string' then return nil end
+    return #encoded
+end
+
+local function allowCollaborationSync(src)
+    local now = GetGameTimer()
+    local window = collaborationWindows[src]
+
+    if not window or now - window.startedAt >= 1000 then
+        collaborationWindows[src] = { startedAt = now, count = 1 }
+        return true
+    end
+
+    if window.count >= MAX_SYNC_EVENTS_PER_SECOND then return false end
+
+    window.count = window.count + 1
+    return true
+end
+
 -- Color palette for editor cursors/presence
 local EDITOR_COLORS = { '#3B82F6', '#EF4444', '#10B981', '#F59E0B', '#8B5CF6', '#EC4899', '#06B6D4', '#F97316' }
 
@@ -73,14 +115,21 @@ ps.registerCallback(resourceName .. ':server:joinReportSession', function(source
     local src = source
     if not CheckAuth(src) then return { success = false } end
 
+    reportId = tonumber(reportId)
+    if not reportId then return { success = false } end
+
+    local report = GetMdtRecord('report', reportId)
+    local allowed = AuthorizeMdtRecord(src, 'record_supplement', 'report', report, true)
+    if not allowed then return { success = false } end
+
     reportId = tostring(reportId)
-    if not reportId or reportId == '' then return { success = false } end
 
     -- Create session if it doesn't exist
     if not activeReportSessions[reportId] then
         activeReportSessions[reportId] = {
             editors = {},
             yjsState = nil,
+            yjsBytes = 0,
             lastStructuredData = {},
         }
     end
@@ -130,7 +179,7 @@ ps.registerCallback(resourceName .. ':server:leaveReportSession', function(sourc
     reportId = tostring(reportId)
 
     local session = activeReportSessions[reportId]
-    if not session then return { success = true } end
+    if not session or not session.editors[src] then return { success = true } end
 
     session.editors[src] = nil
 
@@ -157,10 +206,19 @@ RegisterNetEvent(resourceName .. ':server:collabSyncYjs')
 AddEventHandler(resourceName .. ':server:collabSyncYjs', function(reportId, update)
     local src = source
     if not CheckAuth(src) then return end
+    if not allowCollaborationSync(src) then return end
+
+    reportId = tonumber(reportId)
+    local updateBytes = encodedSize(update)
+    if not reportId or type(update) ~= 'string' or not updateBytes or updateBytes < 1 or updateBytes > MAX_YJS_UPDATE_BYTES then return end
 
     reportId = tostring(reportId)
     local session = activeReportSessions[reportId]
     if not session or not session.editors[src] then return end
+
+    local nextBytes = (session.yjsBytes or 0) + updateBytes
+    if nextBytes > MAX_YJS_SESSION_BYTES then return end
+    session.yjsBytes = nextBytes
 
     session.editors[src].lastActivity = os.time()
 
@@ -204,6 +262,12 @@ RegisterNetEvent(resourceName .. ':server:collabSyncData')
 AddEventHandler(resourceName .. ':server:collabSyncData', function(reportId, dataType, data)
     local src = source
     if not CheckAuth(src) then return end
+    if not allowCollaborationSync(src) then return end
+
+    reportId = tonumber(reportId)
+    local dataBytes = encodedSize(data)
+    if not reportId or type(dataType) ~= 'string' or not allowedStructuredTypes[dataType] then return end
+    if not dataBytes or dataBytes > MAX_STRUCTURED_DATA_BYTES then return end
 
     reportId = tostring(reportId)
     local session = activeReportSessions[reportId]
@@ -224,6 +288,12 @@ RegisterNetEvent(resourceName .. ':server:collabSyncAwareness')
 AddEventHandler(resourceName .. ':server:collabSyncAwareness', function(reportId, update)
     local src = source
     if not CheckAuth(src) then return end
+    if not allowCollaborationSync(src) then return end
+
+    reportId = tonumber(reportId)
+    local updateBytes = encodedSize(update)
+    if not reportId or not updateBytes or updateBytes < 1 or updateBytes > MAX_AWARENESS_BYTES then return end
+
     reportId = tostring(reportId)
     local session = activeReportSessions[reportId]
     if not session or not session.editors[src] then return end
@@ -241,6 +311,7 @@ end)
 -- Cleanup on player disconnect
 AddEventHandler('playerDropped', function()
     local src = source
+    collaborationWindows[src] = nil
     for reportId, session in pairs(activeReportSessions) do
         if session.editors[src] then
             session.editors[src] = nil
