@@ -833,6 +833,7 @@ end)
 ps.registerCallback(resourceName .. ':server:selfDispatchAttach', function(source, data)
     local src = source
     if not CheckAuth(src) then return { success = false } end
+    if not CheckPermission(src, 'dispatch_attach') then return { success = false, error = 'No permission' } end
     data = data or {}
     local id = data.dispatch_id and tostring(data.dispatch_id) or nil
     local call = id and ManualDispatches[id] or nil

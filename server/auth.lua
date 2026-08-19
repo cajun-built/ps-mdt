@@ -8,6 +8,101 @@ local function isDojJob(jobName)
     return false
 end
 
+local function getLeoContext(source)
+    if GetResourceState('cgn_leo_core') ~= 'started' then return nil end
+    local ok, context = pcall(function()
+        return exports.cgn_leo_core:GetContext(source)
+    end)
+    return ok and context or nil
+end
+
+function IsLeoMdtSource(source)
+    return source and ps.getJobType(source) == Config.PoliceJobType
+end
+
+-- PS MDT keeps its own UI permission names. LEO authorization is deliberately
+-- resolved by cgn_leo_core so rank inheritance, assignments, certifications,
+-- restrictions and compartments have one server-side source of truth.
+local leoPermissionMap = {
+    citizens_search = { permission = 'records.search' },
+    citizens_edit_licenses = { permission = 'records.lifecycle' },
+    bolos_view = { permission = 'records.view' },
+    bolos_create = { permission = 'records.bolo_create' },
+    vehicles_search = { permission = 'records.search' },
+    vehicles_edit_dmv = { permission = 'records.lifecycle' },
+    weapons_search = { permission = 'records.search' },
+    weapons_add = { permission = 'records.enforcement_create' },
+    cases_view = { permission = 'records.view' },
+    cases_create = { permission = 'records.create' },
+    cases_edit = { permission = 'records.supplement' },
+    cases_delete = { permission = 'records.lifecycle' },
+    evidence_view = { permission = 'evidence.view' },
+    evidence_create = { permission = 'evidence.submit' },
+    evidence_transfer = { permission = 'evidence.transfer' },
+    evidence_upload = { permission = 'evidence.submit' },
+    reports_view = { permission = 'records.view' },
+    reports_create = { permission = 'records.create' },
+    reports_delete = { permission = 'records.lifecycle' },
+    warrants_view = { permission = 'records.view' },
+    warrants_issue = { permission = 'records.warrant_request' },
+    warrants_close = { permission = 'records.lifecycle' },
+    charges_view = { permission = 'records.view' },
+    charges_edit = { permission = 'records.lifecycle' },
+    map_patrols_view = { permission = 'dispatch.view' },
+    map_patrols_manage = { permission = 'dispatch.assign_other' },
+    map_patrols_edit = { permission = 'dispatch.assign_other' },
+    dispatch_attach = { permission = 'dispatch.self_assign' },
+    dispatch_route = { permission = 'dispatch.view' },
+    dispatch_assign = { permission = 'dispatch.assign_other' },
+    dispatch_notes = { permission = 'dispatch.assign_other' },
+    vehicle_impound = { permission = 'records.enforcement_create' },
+    vehicle_impound_release = { permission = 'evidence.release' },
+    vehicle_impound_override = { permission = 'records.lifecycle' },
+    cameras_view = { permission = 'records.view' },
+    bodycams_view = { permission = 'records.view' },
+    dashcams_view = { permission = 'records.view' },
+    notes_edit_department = { permission = 'records.supplement' },
+    roster_manage_certifications = { permission = 'certifications.issue' },
+    roster_manage_officers = { permission = 'personnel.actions', compartment = 'personnel' },
+    ppr_view = { permission = 'personnel.protected_view', compartment = 'personnel' },
+    ppr_manage = { permission = 'personnel.actions', compartment = 'personnel' },
+    fto_view = { permission = 'certifications.view' },
+    fto_manage = { permission = 'certifications.issue' },
+    bulletin_view = { permission = 'records.view' },
+    bulletin_post = { permission = 'records.review' },
+    bulletin_pin = { permission = 'records.lifecycle' },
+    court_view = { permission = 'records.view' },
+    court_create = { permission = 'records.create' },
+    court_edit = { permission = 'records.supplement' },
+    court_delete = { permission = 'records.lifecycle' },
+    training_view = { permission = 'certifications.view' },
+    training_create = { permission = 'certifications.issue' },
+    training_edit = { permission = 'certifications.issue' },
+    training_delete = { permission = 'certifications.issue' },
+    ia_view = { permission = 'records.view', compartment = 'internal_affairs' },
+    ia_manage = { permission = 'records.lifecycle', compartment = 'internal_affairs' },
+    sop_view = { permission = 'records.view' },
+    sop_manage = { permission = 'records.lifecycle' },
+    management_permissions = { permission = 'compartments.manage' },
+    management_bulletins = { permission = 'records.lifecycle' },
+    management_activity = { permission = 'personnel.protected_view', compartment = 'personnel' },
+    management_tags = { permission = 'records.lifecycle' },
+    management_tracking = { permission = 'personnel.protected_view', compartment = 'personnel' },
+    management_settings = { permission = 'compartments.manage' },
+}
+
+local function authorizeLeoPermission(source, permName)
+    local mapped = leoPermissionMap[permName]
+    if not mapped or GetResourceState('cgn_leo_core') ~= 'started' then return false end
+    local ok, allowed = pcall(function()
+        return exports.cgn_leo_core:Authorize(source, mapped.permission, {
+            requireDuty = true,
+            compartment = mapped.compartment,
+        })
+    end)
+    return ok and allowed == true
+end
+
 function CheckAuth(source)
     -- Never feed an invalid/offline source into the framework bridge: some
     -- bridges index the player object without a nil-check and raise a non-string
@@ -26,6 +121,14 @@ function CheckAuth(source)
     end
 
     ps.debug('Checking MDT Authorization')
+    if jobType == Config.PoliceJobType then
+        local context = getLeoContext(source)
+        if not context or not context.onDuty then
+            ps.debug('Access Denied for ID: ' .. tostring(source) .. ', no verified LEO duty session')
+            return false
+        end
+        return true
+    end
     local dojCheck = isDojJob(jobName) or (Config.DojJobType and jobType == Config.DojJobType)
     if jobType ~= Config.PoliceJobType and jobType ~= Config.MedicalJobType and not dojCheck then
         ps.debug('Access Denied for ID: ' .. tostring(source) .. ', not an authorized job type')
@@ -39,7 +142,12 @@ end
 function CheckPermission(source, permName)
     if not source or not permName then return false end
 
-    -- Boss always has all permissions
+    local jobType = ps.getJobType(source)
+    if jobType == Config.PoliceJobType then
+        return authorizeLeoPermission(source, permName)
+    end
+
+    -- Non-LEO domains retain PS MDT's configured grade permissions.
     if ps.isBoss and ps.isBoss(source) then return true end
 
     local jobData = ps.getJobData and ps.getJobData(source) or nil
@@ -207,6 +315,19 @@ end)
 
 ps.registerCallback(tostring(GetCurrentResourceName())..':server:checkAuth', function(source)
     local civAccess = Config.CivilianAccess and Config.CivilianAccess.enabled
+    local jobType = ps.getJobType(source)
+    if jobType == Config.PoliceJobType then
+        local context = getLeoContext(source)
+        if context then
+            return {
+                authorized = context.onDuty == true,
+                isLEO = true,
+                onDuty = context.onDuty == true,
+                jobType = 'leo',
+            }
+        end
+        return false
+    end
     local isAuthed = CheckAuth(source)
     if isAuthed then
         return isAuthed
@@ -226,6 +347,13 @@ ps.registerCallback(tostring(GetCurrentResourceName())..':server:getMyPermission
     if not CheckAuth(src) then return { permissions = {} } end
 
     local jobName = ps.getJobName(src) or 'police'
+    if ps.getJobType(src) == Config.PoliceJobType then
+        local granted = {}
+        for _, permission in ipairs((Config and Config.ManagementPermissions) or {}) do
+            if authorizeLeoPermission(src, permission) then granted[#granted + 1] = permission end
+        end
+        return { permissions = granted, isBoss = false }
+    end
     local jobData = ps.getJobData and ps.getJobData(src) or nil
     local gradeValue = 0
     local isBoss = false

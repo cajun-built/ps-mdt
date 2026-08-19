@@ -11,6 +11,30 @@ export interface DepartmentBrand {
 }
 
 const BUILT_IN: Record<string, Omit<DepartmentBrand, "jobName">> = {
+	brpd: {
+		name: "Baton Rouge Police Department",
+		shortName: "BRPD",
+		logo: "./images/departments/police.png",
+		accentRgb: "30, 94, 170",
+		accentTextRgb: "147, 197, 253",
+		icon: "local_police",
+	},
+	ebrso: {
+		name: "East Baton Rouge Sheriff's Office",
+		shortName: "EBRSO",
+		logo: "./images/departments/police.png",
+		accentRgb: "158, 112, 32",
+		accentTextRgb: "253, 211, 125",
+		icon: "local_police",
+	},
+	lsp: {
+		name: "Louisiana State Police",
+		shortName: "LSP",
+		logo: "./images/departments/police.png",
+		accentRgb: "24, 90, 157",
+		accentTextRgb: "144, 202, 249",
+		icon: "local_police",
+	},
 	police: {
 		name: "Los Santos Police Department",
 		shortName: "LSPD",
@@ -62,7 +86,7 @@ const BUILT_IN: Record<string, Omit<DepartmentBrand, "jobName">> = {
 };
 
 const FALLBACKS: Record<Exclude<JobType, "civilian">, Omit<DepartmentBrand, "jobName">> = {
-	leo: BUILT_IN.police,
+	leo: BUILT_IN.brpd,
 	ems: BUILT_IN.ambulance,
 	doj: BUILT_IN.doj,
 };

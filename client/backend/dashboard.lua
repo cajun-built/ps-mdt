@@ -26,9 +26,12 @@ RegisterNUICallback('checkAuth', function(_, cb)
     local jobType = ps.getJobType()
     local jobName = ps.getJob() and ps.getJob().name or ''
     local isDoj = _isDojJob(jobName) or (Config.DojJobType and jobType == Config.DojJobType)
-    local isAuthorized = jobType == Config.PoliceJobType or _isEmsJob(jobName, jobType) or isDoj
+    local isLeo = jobType == Config.PoliceJobType
+    local coreResult = isLeo and ps.callback('cgn_leo_core:server:getContext') or nil
+    local verifiedLeo = isLeo and type(coreResult) == 'table' and coreResult.success == true
+    local isAuthorized = verifiedLeo or _isEmsJob(jobName, jobType) or isDoj
     local mdtJobType = isDoj and 'doj' or (_isEmsJob(jobName, jobType) and 'ems' or 'leo')
-    local onDuty = ps.getJobDuty() or false
+    local onDuty = verifiedLeo and coreResult.context.onDuty == true or (not isLeo and (ps.getJobDuty() or false))
     local playerData = ps.getPlayerData()
 
     local isCivilian = false
@@ -65,11 +68,14 @@ function NUIUpdateAuth()
     local jobType = ps.getJobType()
     local jobName = ps.getJob() and ps.getJob().name or ''
     local isDoj = _isDojJob(jobName) or (Config.DojJobType and jobType == Config.DojJobType)
-    local isAuthorized = jobType == Config.PoliceJobType or _isEmsJob(jobName, jobType) or isDoj
+    local isLeo = jobType == Config.PoliceJobType
+    local coreResult = isLeo and ps.callback('cgn_leo_core:server:getContext') or nil
+    local verifiedLeo = isLeo and type(coreResult) == 'table' and coreResult.success == true
+    local isAuthorized = verifiedLeo or _isEmsJob(jobName, jobType) or isDoj
     local mdtJobType = isDoj and 'doj' or (_isEmsJob(jobName, jobType) and 'ems' or 'leo')
     local playerData = ps.getPlayerData()
     SendNUI('updateAuth', {
-        authorized = isAuthorized and (ps.getJobDuty() or false),
+        authorized = isAuthorized and (isDoj or (verifiedLeo and coreResult.context.onDuty == true) or (not isLeo and (ps.getJobDuty() or false))),
         playerData = type(playerData) == 'table' and {
             citizenid = playerData.citizenid,
             job = playerData.job,
@@ -79,7 +85,7 @@ function NUIUpdateAuth()
             } or nil,
         } or nil,
         isLEO = isAuthorized,
-        onDuty = ps.getJobDuty() or false,
+        onDuty = verifiedLeo and coreResult.context.onDuty == true or (not isLeo and (ps.getJobDuty() or false)),
         jobType = mdtJobType,
     })
 end
@@ -94,16 +100,24 @@ end)
 RegisterNUICallback('signOut', function(_, cb)
     -- ps.debug('MDT signOut triggered via NUI callback')
     PlayMDTSound('close')
-    cb({})
+    local result = ps.getJobType() == Config.PoliceJobType and ps.callback('cgn_leo_core:server:setDuty', false)
+        or { success = true }
+    cb(result or { success = false })
     CloseMDT()
-    ps.notify('Signed out of MDT', 'success')
+    ps.notify(result and result.success and 'Signed out and clocked off duty' or 'Signed out of MDT', 'success')
 end)
 
 RegisterNUICallback('toggleDuty', function(_, cb)
     -- ps.debug('MDT toggleDuty triggered via NUI callback')
     PlayMDTSound('buttonClick')
-    cb({})
-    TriggerServerEvent('ps_lib:server:toggleDuty')
+    local desiredDuty = not (ps.getJobDuty() or false)
+    local result = ps.callback('cgn_leo_core:server:setDuty', desiredDuty)
+    cb(result or { success = false, reason = 'service_unavailable' })
+    if not result or not result.success then
+        ps.notify(('Duty request denied: %s'):format(result and result.reason or 'service_unavailable'), 'error')
+    end
+    Wait(100)
+    NUIUpdateAuth()
 end)
 
 -- DASHBOARD (aggregate) -----------------------------------

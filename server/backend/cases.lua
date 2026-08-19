@@ -28,6 +28,7 @@ end
 ps.registerCallback(resourceName .. ':server:createCase', function(source, payload)
     local src = source
     if not CheckAuth(src) then return { success = false, error = 'Unauthorized' } end
+    if not CheckPermission(src, 'cases_create') then return { success = false, error = 'Insufficient permissions' } end
 
     payload = payload or {}
     local title = payload.title or 'Untitled Case'
@@ -125,6 +126,7 @@ end)
 ps.registerCallback(resourceName .. ':server:getCase', function(source, caseId)
     local src = source
     if not CheckAuth(src) then return { success = false, error = 'Unauthorized' } end
+    if not CheckPermission(src, 'cases_edit') then return { success = false, error = 'Insufficient permissions' } end
 
     caseId = tonumber(caseId)
     if not caseId then
@@ -185,6 +187,7 @@ end)
 ps.registerCallback(resourceName .. ':server:linkReportToCase', function(source, reportId, caseId)
     local src = source
     if not CheckAuth(src) then return { success = false, error = 'Unauthorized' } end
+    if not CheckPermission(src, 'cases_edit') then return { success = false, error = 'Insufficient permissions' } end
 
     reportId = tonumber(reportId)
     caseId = tonumber(caseId)
@@ -209,6 +212,8 @@ end)
 ps.registerCallback(resourceName .. ':server:unlinkReportFromCase', function(source, reportId, caseId)
     local src = source
     if not CheckAuth(src) then return { success = false, error = 'Unauthorized' } end
+    if not CheckPermission(src, 'cases_edit') then return { success = false, error = 'Insufficient permissions' } end
+    if not CheckPermission(src, 'cases_edit') then return { success = false, error = 'Insufficient permissions' } end
 
     reportId = tonumber(reportId)
     caseId = tonumber(caseId)
@@ -290,6 +295,7 @@ end)
 ps.registerCallback(resourceName .. ':server:updateCase', function(source, caseId, payload)
     local src = source
     if not CheckAuth(src) then return { success = false, error = 'Unauthorized' } end
+    if not CheckPermission(src, 'cases_edit') then return { success = false, error = 'Insufficient permissions' } end
 
     caseId = tonumber(caseId)
     if not caseId then
@@ -349,6 +355,8 @@ end)
 ps.registerCallback(resourceName .. ':server:deleteCase', function(source, caseId)
     local src = source
     if not CheckAuth(src) then return { success = false, error = 'Unauthorized' } end
+    if IsLeoMdtSource(src) then return { success = false, error = 'Submitted cases are permanent records and cannot be deleted' } end
+    if not CheckPermission(src, 'cases_delete') then return { success = false, error = 'Insufficient permissions' } end
 
     caseId = tonumber(caseId)
     if not caseId then
@@ -556,6 +564,7 @@ end)
 ps.registerCallback(resourceName .. ':server:addEvidenceItem', function(source, payload)
     local src = source
     if not CheckAuth(src) then return { success = false, error = 'Unauthorized' } end
+    if not CheckPermission(src, 'evidence_create') then return { success = false, error = 'Insufficient permissions' } end
 
     payload = payload or {}
     local caseId = tonumber(payload.caseId)
@@ -617,6 +626,8 @@ end)
 ps.registerCallback(resourceName .. ':server:removeEvidenceImage', function(source, imageId)
     local src = source
     if not CheckAuth(src) then return { success = false, error = 'Unauthorized' } end
+    if IsLeoMdtSource(src) then return { success = false, error = 'Submitted evidence images are permanent records and cannot be deleted' } end
+    if not CheckPermission(src, 'evidence_upload') then return { success = false, error = 'Insufficient permissions' } end
 
     imageId = tonumber(imageId)
     if not imageId then
@@ -648,6 +659,7 @@ end)
 ps.registerCallback(resourceName .. ':server:updateEvidenceItem', function(source, evidenceId, evidence)
     local src = source
     if not CheckAuth(src) then return { success = false, error = 'Unauthorized' } end
+    if not CheckPermission(src, 'evidence_create') then return { success = false, error = 'Insufficient permissions' } end
 
     evidenceId = tonumber(evidenceId)
     if not evidenceId or not evidence then
@@ -715,6 +727,7 @@ end)
 ps.registerCallback(resourceName .. ':server:transferEvidenceItem', function(source, evidenceId, toCitizenId, notes)
     local src = source
     if not CheckAuth(src) then return { success = false, error = 'Unauthorized' } end
+    if not CheckPermission(src, 'evidence_transfer') then return { success = false, error = 'Insufficient permissions' } end
 
     evidenceId = tonumber(evidenceId)
     if not evidenceId or not toCitizenId then
@@ -742,6 +755,7 @@ end)
 ps.registerCallback(resourceName .. ':server:deleteEvidenceItem', function(source, evidenceId)
     local src = source
     if not CheckAuth(src) then return { success = false, error = 'Unauthorized' } end
+    if IsLeoMdtSource(src) then return { success = false, error = 'Submitted evidence items are permanent records and cannot be deleted' } end
 
     evidenceId = tonumber(evidenceId)
     if not evidenceId then

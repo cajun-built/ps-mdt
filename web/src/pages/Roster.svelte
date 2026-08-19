@@ -60,6 +60,12 @@
 		badgeNumber: string;
 		citizenid?: string;
 		radioChannel?: number;
+		employmentStatus?: string;
+		assignments?: string[];
+		primaryAssignment?: string;
+		compartments?: string[];
+		grants?: string[];
+		restrictions?: string[];
 	}
 
 	interface ActiveUnit {
@@ -96,10 +102,11 @@
 	let selectedCerts = $state<string[]>([]);
 	let isSavingCerts = $state(false);
 	let showCertModal = $state(false);
+	let certExpiresAt = $state("");
 
 	// Boss panel state
 	let showBossPanel = $state(false);
-	let bossPanelTab = $state<"rank" | "callsign" | "certs" | "ppr" | "fto" | "ia_history" | "activity">("rank");
+	let bossPanelTab = $state<"rank" | "callsign" | "access" | "certs" | "ppr" | "fto" | "ia_history" | "activity">("rank");
 	let iaHistory = $state<Array<{ id: number; complaint_number: string; category: string; status: string; created_at: string }>>([]);
 	let iaHistoryLoading = $state(false);
 	let pprHistory = $state<Array<{ id: number; ppr_number: string; category: string; title: string; author_name: string; incident_date?: string; created_at: string }>>([]);
@@ -111,6 +118,27 @@
 	let editCallsign = $state("");
 	let isSavingBoss = $state(false);
 	let showFireConfirm = $state(false);
+	let actionReason = $state("");
+	let editBadge = $state("");
+	let editAssignment = $state("patrol");
+	let assignmentPrimary = $state(false);
+	let assignmentActive = $state(true);
+	let editStatus = $state("active");
+	let transferAgency = $state("brpd");
+	let transferGrades = $state<JobGrade[]>([]);
+	let transferGrade = $state<number | null>(null);
+	let editCompartment = $state("internal_affairs");
+	let compartmentActive = $state(true);
+	let compartmentExpiresAt = $state("");
+	let editPermission = $state("records.review");
+	let permissionExpiresAt = $state("");
+	let restrictionActive = $state(true);
+	let restrictionExpiresAt = $state("");
+	let showHireModal = $state(false);
+	let hireCitizenId = $state("");
+	let hireBadge = $state("");
+	let hireCallsign = $state("");
+	let hireReason = $state("");
 
 	let canManageCerts = $derived(authService?.hasPermission("roster_manage_certifications") ?? false);
 	let canManageOfficers = $derived(authService?.hasPermission("roster_manage_officers") ?? false);
@@ -322,6 +350,30 @@
 		}
 	}
 
+	async function loadTransferGrades(agency: string) {
+		if (isEnvBrowser()) {
+			transferGrades = jobGrades;
+			transferGrade = null;
+			return;
+		}
+		try {
+			const grades = await fetchNui<JobGrade[]>(NUI_EVENTS.ROSTER.GET_JOB_GRADES, { job: agency });
+			transferGrades = Array.isArray(grades) ? grades : [];
+		} catch {
+			transferGrades = [];
+		}
+		transferGrade = null;
+	}
+
+	function databaseDate(value: string): string | null {
+		if (!value) return null;
+		return value.replace("T", " ") + (value.length === 16 ? ":00" : "");
+	}
+
+	function officerHasCompartment(officer: Officer | null, compartment: string): boolean {
+		return (officer?.compartments || []).some((value) => value === compartment || value.endsWith(`:${compartment}`));
+	}
+
 	function handleSort(column: string) {
 		if (sortColumn === column) {
 			sortDirection = sortDirection === "asc" ? "desc" : "asc";
@@ -347,7 +399,21 @@
 
 		selectedOfficer = officer;
 		selectedCerts = [...(officer.certifications || [])];
+		certExpiresAt = "";
 		editCallsign = officer.callsign || "";
+		editBadge = officer.badgeNumber || "";
+		editStatus = officer.employmentStatus || "active";
+		editAssignment = officer.primaryAssignment || officer.assignments?.[0] || "patrol";
+		assignmentPrimary = officer.primaryAssignment === editAssignment;
+		assignmentActive = true;
+		transferAgency = officer.department === "brpd" ? "ebrso" : "brpd";
+		transferGrade = null;
+		editCompartment = "internal_affairs";
+		compartmentActive = !officerHasCompartment(officer, editCompartment);
+		compartmentExpiresAt = "";
+		permissionExpiresAt = "";
+		restrictionExpiresAt = "";
+		actionReason = "";
 		selectedGrade = null;
 		showFireConfirm = false;
 
@@ -357,6 +423,7 @@
 			await Promise.all([
 				loadOfficerTags(),
 				loadJobGrades(officer.department || "police"),
+				loadTransferGrades(transferAgency),
 			]);
 			showBossPanel = true;
 		} else {
@@ -371,7 +438,10 @@
 		showFireConfirm = false;
 		selectedOfficer = null;
 		selectedCerts = [];
+		certExpiresAt = "";
+		actionReason = "";
 		editCallsign = "";
+		editBadge = "";
 		selectedGrade = null;
 		jobGrades = [];
 	}
@@ -380,6 +450,8 @@
 		showCertModal = false;
 		selectedOfficer = null;
 		selectedCerts = [];
+		certExpiresAt = "";
+		actionReason = "";
 	}
 
 	function toggleCert(tagName: string) {
@@ -391,7 +463,7 @@
 	}
 
 	async function saveCertifications() {
-		if (!selectedOfficer?.citizenid) return;
+		if (!selectedOfficer?.citizenid || actionReason.trim().length < 3) return;
 		isSavingCerts = true;
 		try {
 			const response = await fetchNui<{ success: boolean; message?: string }>(
@@ -399,6 +471,8 @@
 				{
 					citizenid: selectedOfficer.citizenid,
 					certifications: selectedCerts,
+					expiresAt: databaseDate(certExpiresAt),
+					reason: actionReason.trim(),
 				},
 			);
 			if (response?.success) {
@@ -423,7 +497,7 @@
 	}
 
 	async function promoteOfficer() {
-		if (!selectedOfficer?.citizenid || selectedGrade === null) return;
+		if (!selectedOfficer?.citizenid || selectedGrade === null || actionReason.trim().length < 3) return;
 		isSavingBoss = true;
 		try {
 			const response = await fetchNui<{ success: boolean; message?: string }>(
@@ -432,6 +506,7 @@
 					citizenid: selectedOfficer.citizenid,
 					job: selectedOfficer.department || "police",
 					grade: selectedGrade,
+					reason: actionReason.trim(),
 				},
 			);
 			if (response?.success) {
@@ -454,17 +529,17 @@
 	let deleteUserData = $state(false);
 
 	async function fireOfficer() {
-		if (!selectedOfficer?.citizenid) return;
+		if (!selectedOfficer?.citizenid || actionReason.trim().length < 3) return;
 		isSavingBoss = true;
 		try {
 			const response = await fetchNui<{ success: boolean; message?: string }>(
 				NUI_EVENTS.ROSTER.FIRE_OFFICER,
-				{ citizenid: selectedOfficer.citizenid, deleteData: deleteUserData },
+				{ citizenid: selectedOfficer.citizenid, deleteData: deleteUserData, reason: actionReason.trim() },
 			);
 			if (response?.success) {
-				officers = officers.filter((o) => o.citizenid !== selectedOfficer!.citizenid);
 				globalNotifications.success(response.message || `${term.member} has been terminated`);
 				closeBossPanel();
+				await loadRoster();
 			} else {
 				globalNotifications.error(response?.message || `Failed to terminate ${term.memberLower}`);
 			}
@@ -569,7 +644,7 @@
 	}
 
 	async function saveCallsign() {
-		if (!selectedOfficer?.citizenid || !editCallsign.trim()) return;
+		if (!selectedOfficer?.citizenid || !editCallsign.trim() || actionReason.trim().length < 3) return;
 		isSavingBoss = true;
 		try {
 			const response = await fetchNui<{ success: boolean; message?: string }>(
@@ -577,13 +652,13 @@
 				{
 					citizenid: selectedOfficer.citizenid,
 					callsign: editCallsign.trim(),
+					reason: actionReason.trim(),
 				},
 			);
 			if (response?.success) {
 				const idx = officers.findIndex((o) => o.citizenid === selectedOfficer!.citizenid);
 				if (idx !== -1) {
 					officers[idx].callsign = editCallsign.trim();
-					officers[idx].badgeNumber = editCallsign.trim();
 				}
 				globalNotifications.success(response.message || `Callsign updated to ${editCallsign.trim()}`);
 			} else {
@@ -594,6 +669,129 @@
 		} finally {
 			isSavingBoss = false;
 		}
+	}
+
+	async function saveBadge() {
+		if (!selectedOfficer?.citizenid || !editBadge.trim() || actionReason.trim().length < 3) return;
+		isSavingBoss = true;
+		try {
+			const response = await fetchNui<{ success: boolean; message?: string }>(NUI_EVENTS.ROSTER.UPDATE_BADGE, {
+				citizenid: selectedOfficer.citizenid, badge: editBadge.trim(), reason: actionReason.trim(),
+			});
+			if (response?.success) {
+				selectedOfficer.badgeNumber = editBadge.trim();
+				globalNotifications.success(response.message || "Badge number updated");
+			} else globalNotifications.error(response?.message || "Failed to update badge number");
+		} catch { globalNotifications.error("Failed to update badge number"); }
+		finally { isSavingBoss = false; }
+	}
+
+	async function saveAssignment() {
+		if (!selectedOfficer?.citizenid || actionReason.trim().length < 3) return;
+		isSavingBoss = true;
+		try {
+			const response = await fetchNui<{ success: boolean; message?: string }>(NUI_EVENTS.ROSTER.UPDATE_ASSIGNMENT, {
+				citizenid: selectedOfficer.citizenid, assignment: editAssignment,
+				primary: assignmentPrimary, active: assignmentActive, reason: actionReason.trim(),
+			});
+			if (response?.success) {
+				globalNotifications.success(response.message || "Assignment updated");
+				await loadRoster();
+			}
+			else globalNotifications.error(response?.message || "Failed to update assignment");
+		} catch { globalNotifications.error("Failed to update assignment"); }
+		finally { isSavingBoss = false; }
+	}
+
+	async function transferOfficer() {
+		if (!selectedOfficer?.citizenid || transferGrade === null || actionReason.trim().length < 3) return;
+		isSavingBoss = true;
+		try {
+			const response = await fetchNui<{ success: boolean; message?: string }>(NUI_EVENTS.ROSTER.TRANSFER_OFFICER, {
+				citizenid: selectedOfficer.citizenid, agency: transferAgency, grade: transferGrade,
+				reason: actionReason.trim(),
+			});
+			if (response?.success) {
+				globalNotifications.success(response.message || "Officer transferred");
+				closeBossPanel();
+				await loadRoster();
+			} else globalNotifications.error(response?.message || "Failed to transfer officer");
+		} catch { globalNotifications.error("Failed to transfer officer"); }
+		finally { isSavingBoss = false; }
+	}
+
+	async function saveCompartment() {
+		if (!selectedOfficer?.citizenid || actionReason.trim().length < 3) return;
+		isSavingBoss = true;
+		try {
+			const response = await fetchNui<{ success: boolean; message?: string }>(NUI_EVENTS.ROSTER.UPDATE_COMPARTMENT, {
+				citizenid: selectedOfficer.citizenid, compartment: editCompartment, active: compartmentActive,
+				expiresAt: databaseDate(compartmentExpiresAt), reason: actionReason.trim(),
+			});
+			if (response?.success) {
+				globalNotifications.success(response.message || "Protected access updated");
+				await loadRoster();
+			} else globalNotifications.error(response?.message || "Failed to update protected access");
+		} catch { globalNotifications.error("Failed to update protected access"); }
+		finally { isSavingBoss = false; }
+	}
+
+	async function grantTemporaryPermission() {
+		if (!selectedOfficer?.citizenid || !permissionExpiresAt || actionReason.trim().length < 3) return;
+		isSavingBoss = true;
+		try {
+			const response = await fetchNui<{ success: boolean; message?: string }>(NUI_EVENTS.ROSTER.GRANT_PERMISSION, {
+				citizenid: selectedOfficer.citizenid, permission: editPermission,
+				expiresAt: databaseDate(permissionExpiresAt), reason: actionReason.trim(),
+			});
+			if (response?.success) globalNotifications.success(response.message || "Temporary permission granted");
+			else globalNotifications.error(response?.message || "Failed to grant temporary permission");
+		} catch { globalNotifications.error("Failed to grant temporary permission"); }
+		finally { isSavingBoss = false; }
+	}
+
+	async function saveRestriction() {
+		if (!selectedOfficer?.citizenid || actionReason.trim().length < 3) return;
+		isSavingBoss = true;
+		try {
+			const response = await fetchNui<{ success: boolean; message?: string }>(NUI_EVENTS.ROSTER.RESTRICT_PERMISSION, {
+				citizenid: selectedOfficer.citizenid, permission: editPermission, active: restrictionActive,
+				expiresAt: databaseDate(restrictionExpiresAt), reason: actionReason.trim(),
+			});
+			if (response?.success) globalNotifications.success(response.message || "Permission restriction updated");
+			else globalNotifications.error(response?.message || "Failed to update permission restriction");
+		} catch { globalNotifications.error("Failed to update permission restriction"); }
+		finally { isSavingBoss = false; }
+	}
+
+	async function saveStatus() {
+		if (!selectedOfficer?.citizenid || actionReason.trim().length < 3) return;
+		isSavingBoss = true;
+		try {
+			const response = await fetchNui<{ success: boolean; message?: string }>(NUI_EVENTS.ROSTER.UPDATE_STATUS, {
+				citizenid: selectedOfficer.citizenid, status: editStatus, reason: actionReason.trim(),
+			});
+			if (response?.success) globalNotifications.success(response.message || "Employment status updated");
+			else globalNotifications.error(response?.message || "Failed to update employment status");
+		} catch { globalNotifications.error("Failed to update employment status"); }
+		finally { isSavingBoss = false; }
+	}
+
+	async function hireOfficer() {
+		if ([hireCitizenId, hireBadge, hireCallsign, hireReason].some((value) => value.trim().length < 3)) return;
+		isSavingBoss = true;
+		try {
+			const response = await fetchNui<{ success: boolean; message?: string }>(NUI_EVENTS.ROSTER.HIRE_OFFICER, {
+				citizenid: hireCitizenId.trim(), badge: hireBadge.trim(), callsign: hireCallsign.trim(), reason: hireReason.trim(),
+			});
+			if (response?.success) {
+				globalNotifications.success(response.message || "Officer hired");
+				showHireModal = false;
+				hireCitizenId = ""; hireBadge = ""; hireCallsign = ""; hireReason = "";
+				await loadRoster();
+			} else globalNotifications.error(response?.message || "Failed to hire officer");
+		} catch { globalNotifications.error("Failed to hire officer"); }
+		finally { isSavingBoss = false; }
 	}
 
 	function getTagColor(certName: string): string {
@@ -615,6 +813,9 @@
 		/>
 		<div class="topbar-right">
 			<span class="result-count">{filteredOfficers.length} {term.memberLower}{filteredOfficers.length !== 1 ? "s" : ""}</span>
+			{#if canManageOfficers && !isEmsDomain}
+				<button class="btn-save" onclick={() => showHireModal = true}>Hire Officer</button>
+			{/if}
 			<button class="btn-secondary" onclick={refreshData} disabled={isLoading}>
 				{isLoading ? "Loading..." : "Refresh"}
 			</button>
@@ -725,6 +926,11 @@
 			</div>
 
 			<div class="modal-body">
+				<label class="boss-label">Written Reason</label>
+				<input class="callsign-input" bind:value={actionReason} maxlength="500" placeholder="Required reason for this personnel action" />
+				<label class="boss-label">Expiration or Renewal Date</label>
+				<input class="callsign-input" type="datetime-local" bind:value={certExpiresAt} />
+				<p class="boss-hint">Optional. When supplied, every selected certification is issued or renewed through this date.</p>
 				{#if availableTags.length === 0}
 					<div class="no-tags">
 						<span class="material-icons no-tags-icon">label_off</span>
@@ -761,7 +967,7 @@
 				<button
 					class="btn-save"
 					onclick={saveCertifications}
-					disabled={isSavingCerts || availableTags.length === 0}
+					disabled={isSavingCerts || availableTags.length === 0 || actionReason.trim().length < 3}
 				>
 					{isSavingCerts ? "Saving..." : "Save"}
 				</button>
@@ -793,7 +999,11 @@
 				</button>
 				<button class="boss-tab" class:active={bossPanelTab === "callsign"} onclick={() => { bossPanelTab = "callsign"; showFireConfirm = false; }}>
 					<span class="material-icons boss-tab-icon">badge</span>
-					Callsign
+					Identity
+				</button>
+				<button class="boss-tab" class:active={bossPanelTab === "access"} onclick={() => { bossPanelTab = "access"; showFireConfirm = false; }}>
+					<span class="material-icons boss-tab-icon">admin_panel_settings</span>
+					Access
 				</button>
 				{#if canManageCerts}
 					<button class="boss-tab" class:active={bossPanelTab === "certs"} onclick={() => { bossPanelTab = "certs"; showFireConfirm = false; }}>
@@ -820,6 +1030,12 @@
 			</div>
 
 			<div class="boss-body">
+				{#if bossPanelTab === "rank" || bossPanelTab === "callsign" || bossPanelTab === "access" || bossPanelTab === "certs"}
+					<div class="boss-section">
+						<label class="boss-label">Written Reason</label>
+						<input class="callsign-input" bind:value={actionReason} maxlength="500" placeholder="Required reason for this personnel action" />
+					</div>
+				{/if}
 				{#if bossPanelTab === "rank"}
 					<div class="boss-section">
 						<label class="boss-label">Change Rank</label>
@@ -855,6 +1071,23 @@
 					<div class="boss-divider"></div>
 
 					<div class="boss-section">
+						<label class="boss-label">Agency Transfer</label>
+						<p class="boss-hint">Transfer the officer to another agency at an approved receiving rank.</p>
+						<div class="callsign-input-row">
+							<select class="callsign-input" bind:value={transferAgency} onchange={() => loadTransferGrades(transferAgency)}>
+								<option value="brpd">BRPD</option><option value="ebrso">EBRSO</option><option value="lsp">LSP</option>
+							</select>
+							<select class="callsign-input" bind:value={transferGrade}>
+								<option value={null}>Select receiving rank</option>
+								{#each transferGrades as grade (grade.grade)}<option value={grade.grade}>{grade.name}</option>{/each}
+							</select>
+							<button class="btn-save" onclick={transferOfficer} disabled={isSavingBoss || transferGrade === null || actionReason.trim().length < 3}>Transfer</button>
+						</div>
+					</div>
+
+					<div class="boss-divider"></div>
+
+					<div class="boss-section">
 						<label class="boss-label boss-label-danger">{term.terminate}</label>
 						<p class="boss-hint">{term.removeHint}</p>
 						{#if !showFireConfirm}
@@ -865,16 +1098,18 @@
 						{:else}
 							<div class="fire-confirm">
 								<p class="fire-warning">Are you sure you want to terminate <strong>{selectedOfficer.firstName} {selectedOfficer.lastName}</strong>?</p>
-								<label class="fire-delete-toggle">
-									<input type="checkbox" bind:checked={deleteUserData} />
-									<span>Delete all user data from MDT</span>
-								</label>
-								{#if deleteUserData}
-									<p class="fire-delete-hint">Removes this person's logs, tags, status, FTO/PPR file, clock records and patrol membership. Reports, evidence, cases, warrants and arrests are kept.</p>
+								{#if isEmsDomain}
+									<label class="fire-delete-toggle">
+										<input type="checkbox" bind:checked={deleteUserData} />
+										<span>Delete all user data from MDT</span>
+									</label>
+									{#if deleteUserData}
+										<p class="fire-delete-hint">Removes this person's logs, tags, status, FTO/PPR file, clock records and patrol membership. Reports, evidence, cases, warrants and arrests are kept.</p>
+									{/if}
 								{/if}
 								<div class="fire-actions">
 									<button class="btn-cancel" onclick={() => showFireConfirm = false}>Cancel</button>
-									<button class="btn-fire-confirm" onclick={fireOfficer} disabled={isSavingBoss}>
+									<button class="btn-fire-confirm" onclick={fireOfficer} disabled={isSavingBoss || actionReason.trim().length < 3}>
 										{isSavingBoss ? "Processing..." : "Confirm Termination"}
 									</button>
 								</div>
@@ -885,7 +1120,7 @@
 				{:else if bossPanelTab === "callsign"}
 					<div class="boss-section">
 						<label class="boss-label">Edit Callsign</label>
-						<p class="boss-hint">Update this {term.memberLower}'s callsign/badge number. {term.member} must be online.</p>
+						<p class="boss-hint">Update this {term.memberLower}'s persistent callsign and permanent badge number.</p>
 						<div class="callsign-input-row">
 							<input
 								type="text"
@@ -895,11 +1130,77 @@
 								maxlength="10"
 							/>
 						</div>
+						<label class="boss-label">Permanent Badge Number</label>
+						<div class="callsign-input-row">
+							<input type="text" class="callsign-input" bind:value={editBadge} maxlength="20" placeholder="Badge number" />
+							<button class="btn-save" onclick={saveBadge} disabled={isSavingBoss || editBadge.trim().length === 0 || actionReason.trim().length < 3}>Save Badge</button>
+						</div>
+						<label class="boss-label">Assignment</label>
+						<div class="callsign-input-row">
+							<select class="callsign-input" bind:value={editAssignment}>
+								<option value="academy">Academy</option><option value="field_training">Field Training</option>
+								<option value="patrol">Patrol</option><option value="investigations">Investigations</option>
+								<option value="traffic">Traffic</option><option value="administration">Administration</option>
+								<option value="internal_affairs">Internal Affairs</option><option value="personnel">Personnel</option>
+								<option value="recruitment">Recruitment</option><option value="training">Training</option>
+								<option value="dispatcher">Dispatcher</option><option value="incident_command">Incident Command</option>
+								<option value="evidence">Evidence</option>
+							</select>
+							<label class="fire-delete-toggle"><input type="checkbox" bind:checked={assignmentPrimary} /><span>Primary</span></label>
+							<label class="fire-delete-toggle"><input type="checkbox" bind:checked={assignmentActive} /><span>Active</span></label>
+							<button class="btn-save" onclick={saveAssignment} disabled={isSavingBoss || actionReason.trim().length < 3}>{assignmentActive ? "Assign" : "Remove"}</button>
+						</div>
+						<label class="boss-label">Employment Status</label>
+						<div class="callsign-input-row">
+							<select class="callsign-input" bind:value={editStatus}>
+								<option value="probationary">Probationary</option><option value="active">Active</option>
+								<option value="leave">Leave</option><option value="suspended">Suspended</option>
+							</select>
+							<button class="btn-save" onclick={saveStatus} disabled={isSavingBoss || actionReason.trim().length < 3}>Update Status</button>
+						</div>
+					</div>
+
+				{:else if bossPanelTab === "access"}
+					<div class="boss-section">
+						<label class="boss-label">Protected Compartment</label>
+						<p class="boss-hint">Protected records require explicit compartment access. Rank alone never bypasses this control.</p>
+						<div class="callsign-input-row">
+							<select class="callsign-input" bind:value={editCompartment} onchange={() => compartmentActive = !officerHasCompartment(selectedOfficer, editCompartment)}>
+								<option value="internal_affairs">Internal Affairs</option><option value="undercover">Undercover</option><option value="personnel">Protected Personnel</option>
+							</select>
+							<input class="callsign-input" type="datetime-local" bind:value={compartmentExpiresAt} />
+							<label class="fire-delete-toggle"><input type="checkbox" bind:checked={compartmentActive} /><span>Active</span></label>
+							<button class="btn-save" onclick={saveCompartment} disabled={isSavingBoss || actionReason.trim().length < 3}>{compartmentActive ? "Grant" : "Revoke"}</button>
+						</div>
+					</div>
+
+					<div class="boss-divider"></div>
+
+					<div class="boss-section">
+						<label class="boss-label">Permission Override</label>
+						<p class="boss-hint">Agency heads may issue expiring access or place an explicit restriction. Restrictions win over every rank and assignment permission.</p>
+						<div class="callsign-input-row">
+							<select class="callsign-input" bind:value={editPermission}>
+								<option value="records.review">Review Records</option><option value="records.lifecycle">Manage Record Lifecycle</option>
+								<option value="dispatch.assign_other">Assign Dispatch Units</option><option value="dispatch.major_incident">Manage Major Incidents</option>
+								<option value="evidence.release">Release Evidence</option><option value="personnel.protected_view">View Protected Personnel</option>
+								<option value="compartment.internal_affairs">Internal Affairs Records</option>
+							</select>
+							<input class="callsign-input" type="datetime-local" bind:value={permissionExpiresAt} />
+							<button class="btn-save" onclick={grantTemporaryPermission} disabled={isSavingBoss || !permissionExpiresAt || actionReason.trim().length < 3}>Temporary Grant</button>
+						</div>
+						<div class="callsign-input-row">
+							<input class="callsign-input" type="datetime-local" bind:value={restrictionExpiresAt} />
+							<label class="fire-delete-toggle"><input type="checkbox" bind:checked={restrictionActive} /><span>Restricted</span></label>
+							<button class="btn-save" onclick={saveRestriction} disabled={isSavingBoss || actionReason.trim().length < 3}>{restrictionActive ? "Restrict" : "Restore"}</button>
+						</div>
 					</div>
 
 				{:else if bossPanelTab === "certs"}
 					<div class="boss-section">
 						<label class="boss-label">Manage Certifications</label>
+						<input class="callsign-input" type="datetime-local" bind:value={certExpiresAt} />
+						<p class="boss-hint">Expiration is optional. Supplying one renews every selected certification through that date.</p>
 						{#if availableTags.length === 0}
 							<div class="no-tags">
 								<span class="material-icons no-tags-icon">label_off</span>
@@ -1052,7 +1353,7 @@
 					<button
 						class="btn-save"
 						onclick={promoteOfficer}
-						disabled={isSavingBoss}
+							disabled={isSavingBoss || actionReason.trim().length < 3}
 					>
 						{isSavingBoss ? "Saving..." : "Update Rank"}
 					</button>
@@ -1060,7 +1361,7 @@
 					<button
 						class="btn-save"
 						onclick={saveCallsign}
-						disabled={isSavingBoss || editCallsign.length === 0}
+						disabled={isSavingBoss || editCallsign.length === 0 || actionReason.trim().length < 3}
 					>
 						{isSavingBoss ? "Saving..." : "Save Callsign"}
 					</button>
@@ -1068,11 +1369,32 @@
 					<button
 						class="btn-save"
 						onclick={saveCertifications}
-						disabled={isSavingCerts || availableTags.length === 0}
+						disabled={isSavingCerts || availableTags.length === 0 || actionReason.trim().length < 3}
 					>
 						{isSavingCerts ? "Saving..." : "Save Certifications"}
 					</button>
 				{/if}
+			</div>
+		</div>
+	</div>
+{/if}
+
+{#if showHireModal}
+	<div class="modal-overlay" onclick={() => showHireModal = false} role="presentation">
+		<div class="modal-container" onclick={(event) => event.stopPropagation()} role="dialog" aria-modal="true" aria-label="Hire officer">
+			<div class="modal-header">
+				<div class="modal-title-area"><span class="modal-title">Hire Officer</span><span class="modal-subtitle">Entry rank and academy assignment are applied automatically.</span></div>
+				<button class="modal-close" onclick={() => showHireModal = false}><span class="material-icons">close</span></button>
+			</div>
+			<div class="modal-body boss-section">
+				<label class="boss-label">Citizen ID</label><input class="callsign-input" bind:value={hireCitizenId} placeholder="Citizen ID" />
+				<label class="boss-label">Permanent Badge Number</label><input class="callsign-input" bind:value={hireBadge} maxlength="20" placeholder="Badge number" />
+				<label class="boss-label">Initial Callsign</label><input class="callsign-input" bind:value={hireCallsign} maxlength="32" placeholder="Callsign" />
+				<label class="boss-label">Written Reason</label><input class="callsign-input" bind:value={hireReason} maxlength="500" placeholder="Hiring reason" />
+			</div>
+			<div class="modal-footer">
+				<button class="btn-cancel" onclick={() => showHireModal = false}>Cancel</button>
+				<button class="btn-save" onclick={hireOfficer} disabled={isSavingBoss || [hireCitizenId, hireBadge, hireCallsign, hireReason].some((value) => value.trim().length < 3)}>{isSavingBoss ? "Hiring..." : "Hire Officer"}</button>
 			</div>
 		</div>
 	</div>

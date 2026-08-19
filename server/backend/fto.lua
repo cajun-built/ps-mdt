@@ -1,5 +1,23 @@
 local resourceName = tostring(GetCurrentResourceName())
 
+local function leoAgency(citizenid)
+    if GetResourceState('cgn_leo_core') ~= 'started' then return nil end
+    local ok, personnel = pcall(function() return exports.cgn_leo_core:GetPersonnel(citizenid, true) end)
+    return ok and personnel and personnel.agency or nil
+end
+
+local function sameLeoAgency(source, citizenid)
+    if not IsLeoMdtSource(source) then return true end
+    local actorAgency = leoAgency(ps.getIdentifier(source))
+    return actorAgency ~= nil and actorAgency == leoAgency(citizenid)
+end
+
+local function assignmentInScope(source, assignmentId)
+    if not IsLeoMdtSource(source) then return true end
+    local row = MySQL.single.await('SELECT trainee_citizenid FROM mdt_fto_assignments WHERE id = ?', { assignmentId })
+    return row ~= nil and sameLeoAgency(source, row.trainee_citizenid)
+end
+
 -- Phase 2: FTO assignments are domain-scoped so EMS sees its own trainees and
 -- police see theirs. Phases/competencies are already scoped by exact job name.
 -- Existing assignment rows default to 'police'; new ones take the creator's domain.
@@ -90,6 +108,11 @@ ps.registerCallback(resourceName .. ':server:getFTOList', function(source, pageN
     if not hasFTOView then
         clauses[#clauses + 1] = '(a.trainee_citizenid = ? OR a.trainer_citizenid = ?)'
         values[#values + 1] = citizenId
+    elseif IsLeoMdtSource(src) then
+        local agency = leoAgency(citizenId)
+        if not agency then return { entries = {}, hasMore = false } end
+        clauses[#clauses + 1] = 'a.trainee_citizenid IN (SELECT citizenid FROM cgn_leo_personnel WHERE agency = ?)'
+        values[#values + 1] = agency
         values[#values + 1] = citizenId
     end
 
@@ -151,6 +174,10 @@ ps.registerCallback(resourceName .. ':server:getFTO', function(source, data)
     if not hasFTOView and entry.trainee_citizenid ~= citizenId and entry.trainer_citizenid ~= citizenId then
         return { success = false, error = 'Unauthorized' }
     end
+    if entry.trainee_citizenid ~= citizenId and entry.trainer_citizenid ~= citizenId
+        and not sameLeoAgency(src, entry.trainee_citizenid) then
+        return { success = false, error = 'Unauthorized' }
+    end
 
     local dOk, dors = pcall(MySQL.query.await, [[
         SELECT d.*, p.name AS phase_name
@@ -180,6 +207,7 @@ ps.registerCallback(resourceName .. ':server:getOfficerFTOHistory', function(sou
     local src = source
     if not CheckAuth(src) then return {} end
     if not officerCitizenId or officerCitizenId == '' then return {} end
+    if officerCitizenId ~= ps.getIdentifier(src) and not sameLeoAgency(src, officerCitizenId) then return {} end
 
     local ok, rows = pcall(MySQL.query.await, [[
         SELECT a.id, a.fto_number, a.status, a.trainer_name, a.trainee_name,
@@ -208,6 +236,9 @@ ps.registerCallback(resourceName .. ':server:createFTOAssignment', function(sour
     end
     if not data.trainer_citizenid or data.trainer_citizenid == '' then
         return { success = false, error = 'Trainer is required' }
+    end
+    if not sameLeoAgency(src, data.trainee_citizenid) or not sameLeoAgency(src, data.trainer_citizenid) then
+        return { success = false, error = 'Trainee and trainer must belong to your agency' }
     end
 
     -- Only one open (active or suspended) assignment per trainee.
@@ -261,6 +292,10 @@ ps.registerCallback(resourceName .. ':server:updateFTOAssignment', function(sour
     assignmentId = tonumber(assignmentId)
     updates = updates or {}
     if not assignmentId then return { success = false, error = 'Invalid ID' } end
+    if not assignmentInScope(src, assignmentId) then return { success = false, error = 'Unauthorized' } end
+    if updates.trainer_citizenid and not sameLeoAgency(src, updates.trainer_citizenid) then
+        return { success = false, error = 'Trainer must belong to your agency' }
+    end
 
     local sets = {}
     local vals = {}
@@ -295,6 +330,7 @@ ps.registerCallback(resourceName .. ':server:advanceFTOPhase', function(source, 
     local assignmentId = tonumber(data.assignment_id)
     local direction = data.direction == 'back' and 'back' or 'next'
     if not assignmentId then return { success = false, error = 'Invalid assignment' } end
+    if not assignmentInScope(src, assignmentId) then return { success = false, error = 'Unauthorized' } end
 
     local a = MySQL.single.await(
         'SELECT id, current_phase_id, status, trainee_name FROM mdt_fto_assignments WHERE id = ?', { assignmentId })
@@ -354,6 +390,7 @@ ps.registerCallback(resourceName .. ':server:setFTOStatus', function(source, dat
     local status = tostring(data.status or '')
     local valid = { active = true, completed = true, failed = true, suspended = true }
     if not assignmentId or not valid[status] then return { success = false, error = 'Invalid request' } end
+    if not assignmentInScope(src, assignmentId) then return { success = false, error = 'Unauthorized' } end
 
     local a = MySQL.single.await('SELECT id, trainee_name FROM mdt_fto_assignments WHERE id = ?', { assignmentId })
     if not a then return { success = false, error = 'Assignment not found' } end
@@ -376,6 +413,7 @@ end)
 ps.registerCallback(resourceName .. ':server:deleteFTOAssignment', function(source, assignmentId)
     local src = source
     if not CheckAuth(src) then return { success = false } end
+    if IsLeoMdtSource(src) then return { success = false, error = 'Submitted FTO records are permanent records and cannot be deleted' } end
     if not CheckPermission(src, 'fto_manage') then return { success = false, error = 'No permission' } end
 
     assignmentId = tonumber(assignmentId)
@@ -394,6 +432,7 @@ ps.registerCallback(resourceName .. ':server:createFTODor', function(source, dat
     data = data or {}
     local assignmentId = tonumber(data.assignment_id)
     if not assignmentId then return { success = false, error = 'Assignment is required' } end
+    if not assignmentInScope(src, assignmentId) then return { success = false, error = 'Unauthorized' } end
 
     -- Always tag a DOR with a phase. If the client didn't send one, fall back to
     -- the assignment's current phase so it counts for the right phase.
@@ -440,6 +479,7 @@ end)
 ps.registerCallback(resourceName .. ':server:deleteFTODor', function(source, dorId)
     local src = source
     if not CheckAuth(src) then return { success = false } end
+    if IsLeoMdtSource(src) then return { success = false, error = 'Submitted FTO reports are permanent records and cannot be deleted' } end
     if not CheckPermission(src, 'fto_manage') then return { success = false, error = 'No permission' } end
 
     dorId = tonumber(dorId)

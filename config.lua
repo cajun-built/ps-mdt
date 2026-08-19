@@ -33,34 +33,13 @@ Config.Sharing = {
             'warrants'
         },
         departments = {
-            'lspd',
-            'bcso',
-            'sahp'
+            'brpd',
+            'ebrso',
+            'lsp'
         }
     },
 
-    -- One-Way Sharing (Unidirectional)
-    -- Viewers can see target department data, but not vice versa
-    OneWay = {
-        { -- Example: FIB and GOV 
-            viewers = {
-                'fib',
-                'gov'
-            },
-            targets = {
-                'lspd',
-                'bcso',
-                'sahp'
-            },
-            types = {
-                'reports',
-                'bodycams',
-                'evidence',
-                'bolos',
-                'warrants',
-            }
-        },
-    },
+    OneWay = {},
 }
 
 -- Keybinds
@@ -139,7 +118,7 @@ Config.Phone = {
 
     -- Court messaging (uses the same Resource above)
     SmsSenderNumber = 'SA-COURT',                 -- "from" number shown on reminder SMS (any string lb-phone accepts)
-    MailSender      = 'San Andreas Judicial System', -- sender shown in the recipient's inbox
+    MailSender      = 'Louisiana Judicial System', -- sender shown in the recipient's inbox
 }
 
 
@@ -350,7 +329,9 @@ Config.WeaponImagePath = 'nui://ox_inventory/web/images/'
 -- vehicle is being held while impounded.
 Config.Impound = {
     Lots = {
-        { id = 'lspd',   label = 'LSPD Impound' },
+        { id = 'brpd',  label = 'BRPD Impound' },
+        { id = 'ebrso', label = 'EBRSO Impound' },
+        { id = 'lsp',   label = 'LSP Impound' },
         { id = 'paleto', label = 'Paleto Impound' },
     },
 
@@ -441,11 +422,9 @@ Config.Impound = {
 -- Job Settings
 Config.PoliceJobType = "leo"
 Config.PoliceJobs = {
-    'lspd',
-    'bcso',
-    'sahp',
-    'fib',
-    'gov'
+    'brpd',
+    'ebrso',
+    'lsp',
 }
 
 Config.DojJobType = "doj"

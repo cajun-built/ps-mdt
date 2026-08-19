@@ -39,3 +39,43 @@ RegisterNUICallback('updateOfficerCallsign', function(data, cb)
     local result = ps.callback('ps-mdt:server:updateOfficerCallsign', data)
     cb(result or { success = false })
 end)
+
+RegisterNUICallback('hireOfficer', function(data, cb)
+    if not MDTOpen then cb({ success = false }) return end
+    cb(ps.callback('ps-mdt:server:hireOfficer', data) or { success = false })
+end)
+
+RegisterNUICallback('updateOfficerBadge', function(data, cb)
+    if not MDTOpen then cb({ success = false }) return end
+    cb(ps.callback('ps-mdt:server:updateOfficerBadge', data) or { success = false })
+end)
+
+RegisterNUICallback('updateOfficerAssignment', function(data, cb)
+    if not MDTOpen then cb({ success = false }) return end
+    cb(ps.callback('ps-mdt:server:updateOfficerAssignment', data) or { success = false })
+end)
+
+RegisterNUICallback('updateOfficerStatus', function(data, cb)
+    if not MDTOpen then cb({ success = false }) return end
+    cb(ps.callback('ps-mdt:server:updateOfficerStatus', data) or { success = false })
+end)
+
+RegisterNUICallback('transferOfficer', function(data, cb)
+    if not MDTOpen then cb({ success = false }) return end
+    cb(ps.callback('ps-mdt:server:transferOfficer', data) or { success = false })
+end)
+
+RegisterNUICallback('updateOfficerCompartment', function(data, cb)
+    if not MDTOpen then cb({ success = false }) return end
+    cb(ps.callback('ps-mdt:server:updateOfficerCompartment', data) or { success = false })
+end)
+
+RegisterNUICallback('grantOfficerPermission', function(data, cb)
+    if not MDTOpen then cb({ success = false }) return end
+    cb(ps.callback('ps-mdt:server:grantOfficerPermission', data) or { success = false })
+end)
+
+RegisterNUICallback('restrictOfficerPermission', function(data, cb)
+    if not MDTOpen then cb({ success = false }) return end
+    cb(ps.callback('ps-mdt:server:restrictOfficerPermission', data) or { success = false })
+end)
