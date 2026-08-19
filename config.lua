@@ -642,6 +642,8 @@ Config.ManagementPermissions = {
     -- Roster
     'roster_manage_certifications',
     'roster_manage_officers',
+    'taskforces_view',
+    'taskforces_manage',
     -- PPR
     'ppr_view',
     'ppr_manage',

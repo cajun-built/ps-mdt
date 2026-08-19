@@ -44,6 +44,13 @@ exports('openCivilianMDT', function()
         isCivilian = true,
         jobType = 'civilian',
     })
-    SetNuiFocus(true, true)
     SetNuiFocusKeepInput(false)
+    SetNuiFocus(true, true)
+    CreateThread(function()
+        Wait(150)
+        if MDTOpen then
+            SetNuiFocusKeepInput(false)
+            SetNuiFocus(true, true)
+        end
+    end)
 end)

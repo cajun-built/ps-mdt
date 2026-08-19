@@ -221,7 +221,7 @@ end
 ps.registerCallback(resourceName .. ':server:getReports', function(source, page, filters)
     local src = source
     if not CheckAuth(src) then return end
-    if not CheckPermission(src, 'reports_create') then return { success = false, error = 'Insufficient permissions' } end
+    if not CheckPermission(src, 'reports_view') then return { success = false, error = 'Insufficient permissions' } end
 
     local identifier = ps.getIdentifier(src)
     local job = ps.getJobName(src)
@@ -233,7 +233,7 @@ ps.registerCallback(resourceName .. ':server:getReports', function(source, page,
     local offset = (pageNumber - 1) * limit
 
     local filterClause, filterValues = buildReportFilterClause(filters)
-    filterClause = filterClause or ''
+    filterClause = " AND mr.lifecycle_status <> 'voided'" .. (filterClause or '')
 
     local accessClause = buildReportAccessClause()
     local baseParams = { jobType, jobType, jobType, identifier, job, jobType }
@@ -262,6 +262,10 @@ ps.registerCallback(resourceName .. ':server:getReports', function(source, page,
             mr.contentplaintext,
             mr.author,
             mr.authorplaintext,
+            mr.owning_agency,
+            mr.task_force_id,
+            mr.lifecycle_status,
+            mr.version,
             mr.datecreated,
             mr.dateupdated,
             (SELECT mrt.tag FROM mdt_reports_tags mrt WHERE mrt.reportid = mr.id LIMIT 1) as tag,
@@ -286,6 +290,12 @@ end)
 ps.registerCallback(resourceName..':server:getReport', function(source, reportid)
     local src = source
 	if not CheckAuth(src) then return end
+
+    reportid = tonumber(reportid)
+    if not reportid then return nil end
+    local record = GetMdtRecord('report', reportid)
+    local allowed = AuthorizeMdtRecord(src, 'record_view', 'report', record, false)
+    if not allowed then return nil end
 
 	local identifier = ps.getIdentifier(src)
     local job = ps.getJobName(src)
@@ -627,6 +637,8 @@ end)
 ps.registerCallback(resourceName..':server:saveReport', function(source, reportData)
     local src = source
     if not CheckAuth(src) then return end
+    if not CheckPermission(src, 'reports_create') then return { success = false, error = 'Insufficient permissions' } end
+    reportData = reportData or {}
 
     local identifier = ps.getIdentifier(src)
     local playerName = ps.getPlayerName(src)
@@ -655,6 +667,11 @@ ps.registerCallback(resourceName..':server:saveReport', function(source, reportD
 
     local reportId = reportData.report and tonumber(reportData.report.id) or nil
     local reportType = reportData.report and reportData.report.type or 'Incident Report'
+    local wasUpdate = reportId ~= nil
+    local isCorrection = false
+    local beforeRecord = nil
+    local owningAgency = nil
+    local taskForceId = nil
 
     local citizenids = collectCitizenIds(reportData)
 
@@ -676,211 +693,230 @@ ps.registerCallback(resourceName..':server:saveReport', function(source, reportD
                 :format(src, playerName, reportId))
             return { success = false, error = "Report not found or access denied" }
         end
-    end
-
-    if not reportId then
-        local insertResult = MySQL.insert.await([[
-            INSERT INTO mdt_reports (title, type, contentyjs, contentplaintext, author, authorplaintext)
-            VALUES (?, ?, ?, ?, ?, ?)
-        ]], {
-            title,
-            reportType,
-            json.encode(content),
-            type(content) == "string" and content or json.encode(content),
-            identifier,
-            (callsign or '') .. ' ' .. (playerName or 'Unknown')
-        })
-
-        if not insertResult then
-            ps.notify(src, 'Failed to save Report', 'error')
-            ps.warn(('[Failed to save] Player [%s] %s tried to save a report (new). Insert failed.')
-                :format(src, playerName))
-            return { success = false, error = 'Failed to insert report' }
-        end
-        reportId = insertResult
+        beforeRecord = GetMdtRecord('report', reportId)
+        local allowed, denied = AuthorizeMdtRecord(src, 'record_create', 'report', beforeRecord, true)
+        if not allowed then return { success = false, error = denied } end
+        owningAgency = beforeRecord.owning_agency
+        taskForceId = beforeRecord.task_force_id
+        isCorrection = beforeRecord.lifecycle_status ~= 'draft'
     else
-        local updateSuccess = MySQL.update.await([[
-            UPDATE mdt_reports
-            SET title = ?, type = ?, contentyjs = ?, contentplaintext = ?, author = ?, authorplaintext = ?, dateupdated = CURRENT_TIMESTAMP
-            WHERE id = ?
-        ]], {
-            title,
-            reportType,
-            json.encode(content),
-            type(content) == "string" and content or json.encode(content),
-            identifier,
-            (callsign or '') .. ' ' .. (playerName or 'Unknown'),
-            reportId
-        })
-
-        if not updateSuccess or updateSuccess == 0 then
-            ps.notify(src, 'Failed to save Report', 'error')
-            ps.warn(('[Failed to save] Player [%s] %s tried to save a report (%s). Update failed.')
-                :format(src, playerName, reportId))
-            return { success = false, error = 'Failed to update report' }
-        end
-
-        local cleanupQueries = {
-            { query = "DELETE FROM mdt_reports_involved WHERE reportid = ?", values = { reportId } },
-            { query = "DELETE FROM mdt_reports_charges WHERE reportid = ?", values = { reportId } },
-            { query = "DELETE FROM mdt_reports_evidence WHERE reportid = ?", values = { reportId } },
-            { query = "DELETE FROM mdt_reports_restrictions WHERE reportid = ?", values = { reportId } },
-            { query = "DELETE FROM mdt_reports_tags WHERE reportid = ?", values = { reportId } },
-            { query = "DELETE FROM mdt_report_vehicles WHERE reportid = ?", values = { reportId } },
-            { query = "DELETE FROM mdt_arrests WHERE reportid = ?", values = { reportId } }
-        }
-
-        local cleanupOk, cleanupErr = pcall(function()
-            return MySQL.transaction.await(cleanupQueries)
-        end)
-        if not cleanupOk then
-            ps.warn(('[Cleanup Transaction Error] Report %s: %s'):format(reportId, tostring(cleanupErr)))
-            return { success = false, error = "Failed to clean up old report data: " .. tostring(cleanupErr) }
-        end
+        local scopeError
+        owningAgency, taskForceId, scopeError = ResolveMdtCreateScope(
+            src, reportData.taskForceId or (reportData.report and reportData.report.taskForceId), 'report'
+        )
+        if not owningAgency then return { success = false, error = scopeError } end
     end
 
-    local attachmentQueries = {}
+    local actor = GetMdtRecordActor(src)
+    if not actor then return { success = false, error = 'identity_unavailable' } end
+    local correctionReason = type(reportData.reason) == 'string'
+        and reportData.reason:gsub('^%s+', ''):gsub('%s+$', '') or ''
+    if isCorrection and correctionReason == '' then
+        return { success = false, error = 'A written reason is required to correct a submitted report' }
+    end
+
+    local encodedContent = json.encode(content)
+    local plainContent = type(content) == 'string' and content or encodedContent
+    local authorPlaintext = (callsign or '') .. ' ' .. (playerName or 'Unknown')
+    local nextVersion = wasUpdate and ((tonumber(beforeRecord.version) or 1) + 1) or 1
     local warrantCitizenIds = {}
-
-    if reportData.involved and #reportData.involved > 0 then
-        for _, involved in ipairs(reportData.involved) do
-            table.insert(attachmentQueries, {
-                query = "INSERT INTO mdt_reports_involved (reportid, citizenid, type, notes) VALUES (?, ?, ?, ?)",
-                values = { reportId, involved.citizenid, involved.type, involved.notes }
-            })
-        end
-    end
-
-    if reportData.charges and #reportData.charges > 0 then
-        for _, charge in ipairs(reportData.charges) do
-            table.insert(attachmentQueries, {
-                query = "INSERT INTO mdt_reports_charges (reportid, citizenid, charge, count, time, fine) VALUES (?, ?, ?, ?, ?, ?)",
-                values = { reportId, charge.citizenid, charge.charge, charge.count or 1, charge.time, charge.fine }
-            })
-            if charge.warrant == true and charge.citizenid then
-                warrantCitizenIds[charge.citizenid] = true
-            end
-        end
-    end
-
-    if reportData.evidence and #reportData.evidence > 0 then
-        for _, evidence in ipairs(reportData.evidence) do
-            local imagesJson = nil
-            if evidence.images and type(evidence.images) == 'table' and #evidence.images > 0 then
-                imagesJson = json.encode(evidence.images)
-            end
-            table.insert(attachmentQueries, {
-                query = "INSERT INTO mdt_reports_evidence (reportid, title, type, content, note, stored, images) VALUES (?, ?, ?, ?, ?, ?, ?)",
-                values = {
-                    reportId,
-                    evidence.title or '',
-                    evidence.type or 'Physical',
-                    evidence.content or '',
-                    evidence.note or '',
-                    evidence.stored or 0,
-                    imagesJson
-                }
-            })
-        end
-    end
-
-    if reportData.restrictions and #reportData.restrictions > 0 then
-        for _, restriction in ipairs(reportData.restrictions) do
-            table.insert(attachmentQueries, {
-                query = "INSERT INTO mdt_reports_restrictions (reportid, type, identifier) VALUES (?, ?, ?)",
-                values = { reportId, restriction.type, restriction.identifier }
-            })
-        end
-    end
-
-    -- Auto-add jobtype restriction so reports are only visible to the same job type
     local creatorJobType = ps.getJobType(src)
-    if creatorJobType then
-        table.insert(attachmentQueries, {
-            query = "INSERT INTO mdt_reports_restrictions (reportid, type, identifier) VALUES (?, ?, ?)",
-            values = { reportId, 'jobtype', creatorJobType }
-        })
-    end
+    local officerId = ps.getIdentifier(src)
+    local officerName = authorPlaintext:gsub('^%s+', ''):gsub('%s+$', '')
+    local expiryDate = os.date('%Y-%m-%d %H:%M:%S', os.time() + (7 * 24 * 60 * 60))
+    local transactionFailure = 'Failed to save report'
 
-    if reportData.tags and #reportData.tags > 0 then
-        for _, tag in ipairs(reportData.tags) do
-            table.insert(attachmentQueries, {
-                query = "INSERT INTO mdt_reports_tags (reportid, tag) VALUES (?, ?)",
-                values = { reportId, tag.tag }
-            })
-        end
-    end
+    local callOk, transactionSuccess = pcall(function()
+        return MySQL.startTransaction(function(query)
+            if wasUpdate then
+                local updateResult = query([[
+                    UPDATE mdt_reports
+                    SET title = ?, type = ?, contentyjs = ?, contentplaintext = ?,
+                        lifecycle_status = 'submitted', version = ?, dateupdated = CURRENT_TIMESTAMP
+                    WHERE id = ? AND version = ?
+                ]], {
+                    title, reportType, encodedContent, plainContent, nextVersion,
+                    reportId, tonumber(beforeRecord.version) or 1
+                })
+                if not updateResult or tonumber(updateResult.affectedRows) ~= 1 then
+                    transactionFailure = 'Report changed before your correction could be saved. Reopen it and try again.'
+                    return false
+                end
 
-    if reportData.vehicles and #reportData.vehicles > 0 then
-        for _, vehicle in ipairs(reportData.vehicles) do
-            table.insert(attachmentQueries, {
-                query = "INSERT INTO mdt_report_vehicles (reportid, plate, vehicle_label, owner_name, owner_citizenid) VALUES (?, ?, ?, ?, ?)",
-                values = { reportId, vehicle.plate, vehicle.vehicle_label, vehicle.owner_name, vehicle.owner_citizenid }
-            })
-        end
-    end
+                for _, tableName in ipairs({
+                    'mdt_reports_involved',
+                    'mdt_reports_charges',
+                    'mdt_reports_evidence',
+                    'mdt_reports_restrictions',
+                    'mdt_reports_tags',
+                    'mdt_report_vehicles',
+                    'mdt_arrests',
+                    'mdt_reports_warrants',
+                }) do
+                    query(('DELETE FROM `%s` WHERE reportid = ?'):format(tableName), { reportId })
+                end
+            else
+                local insertResult = query([[
+                    INSERT INTO mdt_reports
+                        (title, type, contentyjs, contentplaintext, author, authorplaintext,
+                         owning_agency, task_force_id, lifecycle_status, version)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'submitted', 1)
+                ]], {
+                    title, reportType, encodedContent, plainContent, identifier,
+                    authorPlaintext, owningAgency, taskForceId
+                })
+                reportId = insertResult and tonumber(insertResult.insertId) or nil
+                if not reportId then
+                    transactionFailure = 'Failed to create report'
+                    return false
+                end
+            end
 
-    if #attachmentQueries > 0 then
-        local attachOk, attachErr = pcall(function()
-            return MySQL.transaction.await(attachmentQueries)
-        end)
-        if not attachOk then
-            ps.warn(('[Attachment Transaction Error] Report %s: %s'):format(reportId, tostring(attachErr)))
-            return { success = false, error = "Failed to save report attachments: " .. tostring(attachErr) }
-        end
-    end
+            for _, involved in ipairs(reportData.involved or {}) do
+                query(
+                    'INSERT INTO mdt_reports_involved (reportid, citizenid, type, notes) VALUES (?, ?, ?, ?)',
+                    { reportId, involved.citizenid, involved.type, involved.notes }
+                )
+            end
 
-    if reportId and reportType == 'Arrest Report' and reportData.involved and #reportData.involved > 0 then
-        local officerId = ps.getIdentifier(src)
-        local officerName = (callsign or '') .. ' ' .. (playerName or '')
-        officerName = officerName:gsub('^%s+', ''):gsub('%s+$', '')
-        local arrestQueries = {}
-        for _, involved in ipairs(reportData.involved) do
-            if involved.type == 'suspect' and involved.citizenid then
-                table.insert(arrestQueries, {
-                    query = [[
-                        INSERT INTO mdt_arrests (reportid, citizenid, officer_citizenid, officer_name)
-                        VALUES (?, ?, ?, ?)
-                    ]],
-                    values = { reportId, involved.citizenid, officerId, officerName }
+            for _, charge in ipairs(reportData.charges or {}) do
+                query([[
+                    INSERT INTO mdt_reports_charges
+                        (reportid, citizenid, charge, count, time, fine)
+                    VALUES (?, ?, ?, ?, ?, ?)
+                ]], {
+                    reportId, charge.citizenid, charge.charge,
+                    charge.count or 1, charge.time, charge.fine
+                })
+                if charge.warrant == true and charge.citizenid then
+                    warrantCitizenIds[charge.citizenid] = true
+                end
+            end
+
+            for _, evidence in ipairs(reportData.evidence or {}) do
+                local imagesJson = evidence.images and type(evidence.images) == 'table'
+                    and #evidence.images > 0 and json.encode(evidence.images) or nil
+                query([[
+                    INSERT INTO mdt_reports_evidence
+                        (reportid, title, type, content, note, stored, images)
+                    VALUES (?, ?, ?, ?, ?, ?, ?)
+                ]], {
+                    reportId, evidence.title or '', evidence.type or 'Physical',
+                    evidence.content or '', evidence.note or '', evidence.stored or 0,
+                    imagesJson
                 })
             end
-        end
-        if #arrestQueries > 0 then
-            MySQL.transaction.await(arrestQueries)
-            if ps.auditLog then
-                for _, involved in ipairs(reportData.involved) do
+
+            for _, restriction in ipairs(reportData.restrictions or {}) do
+                query(
+                    'INSERT INTO mdt_reports_restrictions (reportid, type, identifier) VALUES (?, ?, ?)',
+                    { reportId, restriction.type, restriction.identifier }
+                )
+            end
+            if creatorJobType then
+                query(
+                    'INSERT INTO mdt_reports_restrictions (reportid, type, identifier) VALUES (?, ?, ?)',
+                    { reportId, 'jobtype', creatorJobType }
+                )
+            end
+
+            for _, tag in ipairs(reportData.tags or {}) do
+                query('INSERT INTO mdt_reports_tags (reportid, tag) VALUES (?, ?)', { reportId, tag.tag })
+            end
+
+            for _, vehicle in ipairs(reportData.vehicles or {}) do
+                query([[
+                    INSERT INTO mdt_report_vehicles
+                        (reportid, plate, vehicle_label, owner_name, owner_citizenid)
+                    VALUES (?, ?, ?, ?, ?)
+                ]], {
+                    reportId, vehicle.plate, vehicle.vehicle_label,
+                    vehicle.owner_name, vehicle.owner_citizenid
+                })
+            end
+
+            if reportType == 'Arrest Report' then
+                for _, involved in ipairs(reportData.involved or {}) do
                     if involved.type == 'suspect' and involved.citizenid then
-                        ps.auditLog(src, 'arrest_logged', 'arrest', reportId, {
-                            citizenid = involved.citizenid,
-                            reportId = reportId
-                        })
+                        query([[
+                            INSERT INTO mdt_arrests
+                                (reportid, citizenid, officer_citizenid, officer_name)
+                            VALUES (?, ?, ?, ?)
+                        ]], { reportId, involved.citizenid, officerId, officerName })
                     end
                 end
             end
-        end
-    end
 
-    if reportId and next(warrantCitizenIds) ~= nil then
-        local expiryDate = os.date('%Y-%m-%d %H:%M:%S', os.time() + (7 * 24 * 60 * 60))
-        local warrantQueries = {}
-        for citizenid, _ in pairs(warrantCitizenIds) do
-            table.insert(warrantQueries, {
-                query = [[
-                    INSERT INTO mdt_reports_warrants (reportid, citizenid, felonies, misdemeanors, infractions, expirydate)
+            for citizenid in pairs(warrantCitizenIds) do
+                query([[
+                    INSERT INTO mdt_reports_warrants
+                        (reportid, citizenid, felonies, misdemeanors, infractions, expirydate)
                     VALUES (?, ?, 0, 0, 0, ?)
                     ON DUPLICATE KEY UPDATE expirydate = VALUES(expirydate)
-                ]],
-                values = { reportId, citizenid, expiryDate }
+                ]], { reportId, citizenid, expiryDate })
+            end
+
+            local afterRecord = {
+                id = reportId,
+                title = title,
+                type = reportType,
+                contentyjs = encodedContent,
+                contentplaintext = plainContent,
+                author = wasUpdate and beforeRecord.author or identifier,
+                authorplaintext = wasUpdate and beforeRecord.authorplaintext or authorPlaintext,
+                owning_agency = owningAgency,
+                task_force_id = taskForceId,
+                lifecycle_status = 'submitted',
+                version = nextVersion,
+            }
+            local beforeJson = beforeRecord and json.encode(beforeRecord) or nil
+            local afterJson = json.encode(afterRecord)
+            local revisionResult = query([[
+                INSERT INTO mdt_record_revisions
+                    (record_type, record_id, revision_number, action, author_citizenid,
+                     author_name, author_agency, reason, before_json, after_json)
+                VALUES ('report', ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ]], {
+                reportId,
+                nextVersion,
+                isCorrection and 'corrected' or 'created',
+                actor.citizenid,
+                actor.name,
+                actor.agency,
+                isCorrection and correctionReason or 'Initial report submission',
+                beforeJson,
+                afterJson,
             })
+            if not revisionResult or not revisionResult.insertId then
+                transactionFailure = 'Failed to preserve report revision history'
+                return false
+            end
+            return true
+        end)
+    end)
+
+    if not callOk or transactionSuccess ~= true then
+        ps.notify(src, transactionFailure, 'error')
+        ps.warn(('[Atomic Report Save Failed] Player [%s] %s, report %s, reason: %s')
+            :format(src, playerName, tostring(reportId or 'new'), tostring(transactionFailure)))
+        return { success = false, error = transactionFailure }
+    end
+
+    if reportType == 'Arrest Report' and ps.auditLog then
+        for _, involved in ipairs(reportData.involved or {}) do
+            if involved.type == 'suspect' and involved.citizenid then
+                ps.auditLog(src, 'arrest_logged', 'arrest', reportId, {
+                    citizenid = involved.citizenid,
+                    reportId = reportId
+                })
+            end
         end
-        MySQL.transaction.await(warrantQueries)
     end
 
     Cache.invalidatePrefix('reports:analytics:')
 
     if ps.auditLog then
-        local action = reportId and reportData.report and reportData.report.id and 'report_updated' or 'report_created'
+        local action = isCorrection and 'report_updated' or 'report_created'
         ps.auditLog(src, action, 'report', reportId, {
             title = title,
             type = reportType
@@ -892,7 +928,7 @@ ps.registerCallback(resourceName..':server:saveReport', function(source, reportD
     return {
         success = true,
         reportId = reportId,
-        message = reportId and "Report updated successfully" or "Report created successfully"
+        message = isCorrection and "Report updated successfully" or "Report created successfully"
     }
 end)
 
@@ -919,19 +955,33 @@ ps.registerCallback(resourceName..':server:updateReportContent', function(source
         if not checkReportAccess(src, reportId) then
             return { success = false, error = "Report not found or access denied" }
         end
+        local record = GetMdtRecord('report', reportId)
+        local allowed, denied = AuthorizeMdtRecord(src, 'record_create', 'report', record, true)
+        if not allowed then return { success = false, error = denied } end
+        if record.lifecycle_status ~= 'draft' then
+            return { success = false, error = 'Submitted reports must be corrected through the report save workflow' }
+        end
     end
 
     if not reportId then
+        local owningAgency, taskForceId, scopeError = ResolveMdtCreateScope(
+            src, reportData and reportData.taskForceId, 'report'
+        )
+        if not owningAgency then return { success = false, error = scopeError } end
         local insertResult = MySQL.insert.await([[
-            INSERT INTO mdt_reports (title, type, contentyjs, contentplaintext, author, authorplaintext)
-            VALUES (?, ?, ?, ?, ?, ?)
+            INSERT INTO mdt_reports
+                (title, type, contentyjs, contentplaintext, author, authorplaintext,
+                 owning_agency, task_force_id, lifecycle_status)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'draft')
         ]], {
             title,
             reportType,
             json.encode(content),
             type(content) == "string" and content or json.encode(content),
             identifier,
-            callsign .. ' ' .. playerName
+            (callsign or '') .. ' ' .. (playerName or 'Unknown'),
+            owningAgency,
+            taskForceId
         })
 
         if not insertResult then
@@ -971,56 +1021,20 @@ end)
 ps.registerCallback(resourceName..':server:deleteReport', function(source, reportId)
     local src = source
     if not CheckAuth(src) then return end
-    if IsLeoMdtSource(src) then return { success = false, error = 'Submitted reports are permanent records and cannot be deleted' } end
-    if not CheckPermission(src, 'reports_delete') then return { success = false, error = 'Insufficient permissions' } end
 
     reportId = tonumber(reportId)
     if not reportId then
         return { success = false, error = "Missing/Invalid report ID" }
     end
 
-    local playerName = ps.getPlayerName(src)
-
-    if not checkReportAccess(src, reportId) then
-        ps.notify(src, 'Failed to delete Report: Not found or no access', 'error')
-        ps.warn(('[Failed to delete] Player [%s] %s tried to delete a report (%s), but it was not found or they do not have access.')
-            :format(src, playerName, reportId))
-        return { success = false, error = "Report not found or access denied" }
-    end
-
-    local reportInfo = MySQL.query.await("SELECT title FROM mdt_reports WHERE id = ?", { reportId })
-    local reportTitle = reportInfo and reportInfo[1] and reportInfo[1].title or "Unknown"
-
-    local success = MySQL.query.await("DELETE FROM mdt_reports WHERE id = ?", { reportId })
-
+    local success, errorCode = SetMdtRecordLifecycle(
+        src, 'report', reportId, 'voided', 'Report voided through MDT deletion action'
+    )
     if success then
         Cache.invalidate('dashboard:reportStats')
         Cache.invalidate('dashboard:usageMetrics')
-        ps.notify(src, 'Report deleted successfully', 'success')
-        ps.debug(('[Report Deleted] Player [%s] %s successfully deleted report (%s): "%s"')
-            :format(src, playerName, reportId, reportTitle))
-
-        if ps.auditLog then
-            ps.auditLog(src, 'report_deleted', 'report', reportId, {
-                title = reportTitle
-            })
-        end
-
-        return {
-            success = true,
-            message = "Report deleted successfully",
-            reportId = reportId
-        }
-    else
-        ps.notify(src, 'Failed to delete report', 'error')
-        ps.warn(('[Failed to delete] Player [%s] %s tried to delete report (%s). Database query failed.')
-            :format(src, playerName, reportId))
-
-        return {
-            success = false,
-            error = "Failed to delete report from database"
-        }
     end
+    return { success = success, error = errorCode, reportId = reportId }
 end)
 
 ps.registerCallback(resourceName..':server:getAvailableTags', function(source, playerJobType)
@@ -1073,13 +1087,14 @@ end)
 ps.registerCallback(resourceName..':server:getReportAnalytics', function(source, filters)
     local src = source
     if not CheckAuth(src) then return { success = false, error = "Unauthorized" } end
+    if not CheckPermission(src, 'reports_view') then return { success = false, error = 'Insufficient permissions' } end
 
     local identifier = ps.getIdentifier(src)
     local job = ps.getJobName(src)
     local jobType = getEffectiveJobType(src)
 
     local filterClause, filterValues = buildReportFilterClause(filters)
-    filterClause = filterClause or ''
+    filterClause = " AND mr.lifecycle_status <> 'voided'" .. (filterClause or '')
 
 	local accessClause = buildReportAccessClause()
     local cacheKeyParts = {
@@ -1154,6 +1169,7 @@ end)
 ps.registerCallback(resourceName .. ':server:getReportsByPlate', function(source, plate)
     local src = source
     if not CheckAuth(src) then return {} end
+    if not CheckPermission(src, 'reports_view') then return {} end
 
     if not plate or plate == '' then
         return {}
@@ -1168,7 +1184,7 @@ ps.registerCallback(resourceName .. ':server:getReportsByPlate', function(source
             mr.authorplaintext
         FROM mdt_report_vehicles mrv
         INNER JOIN mdt_reports mr ON mr.id = mrv.reportid
-        WHERE mrv.plate = ?
+        WHERE mrv.plate = ? AND mr.lifecycle_status <> 'voided'
         ORDER BY mr.datecreated DESC
         LIMIT 20
     ]], { plate })

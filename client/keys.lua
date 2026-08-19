@@ -12,6 +12,7 @@ local CreateThread = CreateThread
 local IsPedSwimming = IsPedSwimming
 local SetNuiFocus = SetNuiFocus
 local SetNuiFocusKeepInput = SetNuiFocusKeepInput
+local SetCursorLocation = SetCursorLocation
 local SendNUI = SendNUI
 local RegisterNUICallback = RegisterNUICallback
 
@@ -86,6 +87,10 @@ CreateThread(function()
                 local control = restrictedControls[i]
                 DisableControlAction(control[1], control[2], true)
             end
+
+            if MDTOpen and IsDisabledControlJustReleased(0, 200) then
+                CloseMDT()
+            end
         else
             controlCheckInterval = 150
         end
@@ -96,6 +101,12 @@ end)
 -- Control state management
 local function toggleControls(state)
     controlsDisabled = state
+end
+
+local function focusMDT()
+    SetNuiFocusKeepInput(false)
+    SetNuiFocus(true, true)
+    SetCursorLocation(0.5, 0.5)
 end
 
 -- MDT Display ------------------------------------------------
@@ -169,9 +180,17 @@ function OpenMDT()
         TriggerServerEvent('ps-mdt:server:trackLogin')
     end
 
-    SetNuiFocus(true, true)
-    SetNuiFocusKeepInput(false)
+    focusMDT()
     toggleControls(true)
+
+    -- Some resources change NUI focus during the same frame that the MDT opens.
+    -- Reassert it after the interface has mounted so its cursor and buttons work.
+    CreateThread(function()
+        Wait(150)
+        if MDTOpen then
+            focusMDT()
+        end
+    end)
 
     -- ── Deferred path: spread the heavy / non-critical work over later frames ─
     CreateThread(function()
@@ -204,28 +223,32 @@ local closeControlsPending = false
 
 
 function CloseMDT(keepAnimation)
-    if MDTOpen then
-        MDTOpen = false
+    local wasOpen = MDTOpen
+    MDTOpen = false
 
+    if wasOpen then
         if StopMdtRadio then StopMdtRadio() end
 
         if not keepAnimation then
             StopTabletAnimation()
         end
+    end
 
-        SendNUI('setVisible', { visible = false })
-        SetNuiFocus(false, false)
+    SendNUI('setVisible', { visible = false })
+    SetNuiFocus(false, false)
+    SetNuiFocusKeepInput(false)
 
-        -- Prevent ESC pause menu conflict - only spawn one delayed thread at a time
-        if not closeControlsPending then
-            closeControlsPending = true
-            CreateThread(function()
-                Wait(100)
-                toggleControls(false) -- Re-enable controls
-                closeControlsPending = false
-            end)
-        end
+    -- Prevent ESC pause menu conflict, only spawn one delayed thread at a time
+    if not closeControlsPending then
+        closeControlsPending = true
+        CreateThread(function()
+            Wait(100)
+            toggleControls(false)
+            closeControlsPending = false
+        end)
+    end
 
+    if wasOpen then
         ps.debug('MDT closed via CloseMDT function')
         TriggerServerEvent('ps-mdt:server:trackLogout')
     end

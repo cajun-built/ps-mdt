@@ -8,7 +8,9 @@ AddEventHandler('cgn_leo_core:server:integrationEvent', function(consumer, event
             version = event.version,
         })
     end)
+    local failureMessage = nil
+    if not success then failureMessage = tostring(errorMessage) end
     exports.cgn_leo_core:AcknowledgeIntegrationEvent(
-        event.eventId, GetCurrentResourceName(), success, success and nil or tostring(errorMessage)
+        event.eventId, GetCurrentResourceName(), success, failureMessage
     )
 end)

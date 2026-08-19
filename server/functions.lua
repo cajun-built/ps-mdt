@@ -152,6 +152,15 @@ local function evidenceCustodyAllowed(source)
     return allowed == true
 end
 
+local function hasEvidenceCompartment(personnel, item)
+    if not item.compartment or item.compartment == '' then return true end
+    local expected = tostring(item.owning_agency) .. ':' .. tostring(item.compartment)
+    for _, compartment in ipairs(personnel and personnel.compartments or {}) do
+        if compartment == expected then return true end
+    end
+    return false
+end
+
 function EnsureEvidenceIntegritySchema()
     EnsureColumn('mdt_evidence_items', 'pending_holder', '`pending_holder` varchar(50) DEFAULT NULL AFTER `last_holder`')
     EnsureColumn('mdt_evidence_items', 'transfer_requested_by', '`transfer_requested_by` varchar(50) DEFAULT NULL AFTER `pending_holder`')
@@ -177,27 +186,29 @@ function RequestEvidenceTransfer(source, evidenceId, toCitizenId, notes)
 
     return withEvidenceLock(evidenceId, function()
         local item = MySQL.single.await([[
-            SELECT id, last_holder, pending_holder FROM mdt_evidence_items WHERE id = ? LIMIT 1
+            SELECT id, last_holder, pending_holder, owning_agency, compartment
+            FROM mdt_evidence_items WHERE id = ? LIMIT 1
         ]], { evidenceId })
         if not item then return false, 'Evidence item not found' end
         if item.last_holder ~= fromCitizenId then return false, 'Only the current custodian may transfer evidence' end
         if item.pending_holder then return false, 'Evidence already has a pending transfer' end
-        local success = MySQL.transaction.await({
-            {
-                query = [[
-                    UPDATE mdt_evidence_items
-                    SET pending_holder = ?, transfer_requested_by = ?, transfer_requested_at = NOW()
-                    WHERE id = ? AND last_holder = ? AND pending_holder IS NULL
-                ]], values = { toCitizenId, fromCitizenId, evidenceId, fromCitizenId },
-            },
-            {
-                query = [[
-                    INSERT INTO mdt_evidence_custody
-                        (evidence_id, from_citizenid, to_citizenid, action, notes)
-                    VALUES (?, ?, ?, 'transfer_requested', ?)
-                ]], values = { evidenceId, fromCitizenId, toCitizenId, notes or '' },
-            },
-        })
+        if not hasEvidenceCompartment(target, item) then return false, 'Recipient lacks evidence compartment access' end
+        local success = MySQL.startTransaction(function(query)
+            local updateResult = query([[
+                UPDATE mdt_evidence_items
+                SET pending_holder = ?, transfer_requested_by = ?, transfer_requested_at = NOW()
+                WHERE id = ? AND last_holder = ? AND pending_holder IS NULL
+            ]], { toCitizenId, fromCitizenId, evidenceId, fromCitizenId })
+            if not updateResult or tonumber(updateResult.affectedRows) ~= 1 then return false end
+
+            local custodyResult = query([[
+                INSERT INTO mdt_evidence_custody
+                    (evidence_id, from_citizenid, to_citizenid, action, notes)
+                VALUES (?, ?, ?, 'transfer_requested', ?)
+            ]], { evidenceId, fromCitizenId, toCitizenId, notes or '' })
+            if not custodyResult or tonumber(custodyResult.affectedRows) ~= 1 then return false end
+            return true
+        end)
         return success == true, success and 'Evidence transfer requested' or 'Evidence transfer failed'
     end)
 end
@@ -209,26 +220,31 @@ function AcceptEvidenceTransfer(source, evidenceId, notes)
     local recipient = ps.getIdentifier(source)
     return withEvidenceLock(evidenceId, function()
         local item = MySQL.single.await([[
-            SELECT id, last_holder, pending_holder FROM mdt_evidence_items WHERE id = ? LIMIT 1
+            SELECT id, last_holder, pending_holder, owning_agency, compartment
+            FROM mdt_evidence_items WHERE id = ? LIMIT 1
         ]], { evidenceId })
         if not item or item.pending_holder ~= recipient then return false, 'No evidence transfer is pending for you' end
-        local success = MySQL.transaction.await({
-            {
-                query = [[
-                    UPDATE mdt_evidence_items
-                    SET last_holder = pending_holder, pending_holder = NULL,
-                        transfer_requested_by = NULL, transfer_requested_at = NULL
-                    WHERE id = ? AND pending_holder = ?
-                ]], values = { evidenceId, recipient },
-            },
-            {
-                query = [[
-                    INSERT INTO mdt_evidence_custody
-                        (evidence_id, from_citizenid, to_citizenid, action, notes)
-                    VALUES (?, ?, ?, 'transfer_accepted', ?)
-                ]], values = { evidenceId, item.last_holder, recipient, notes or '' },
-            },
-        })
+        local recipientPersonnel = exports.cgn_leo_core:GetPersonnel(recipient, true)
+        if not hasEvidenceCompartment(recipientPersonnel, item) then
+            return false, 'Evidence compartment access required'
+        end
+        local success = MySQL.startTransaction(function(query)
+            local updateResult = query([[
+                UPDATE mdt_evidence_items
+                SET last_holder = pending_holder, pending_holder = NULL,
+                    transfer_requested_by = NULL, transfer_requested_at = NULL
+                WHERE id = ? AND pending_holder = ?
+            ]], { evidenceId, recipient })
+            if not updateResult or tonumber(updateResult.affectedRows) ~= 1 then return false end
+
+            local custodyResult = query([[
+                INSERT INTO mdt_evidence_custody
+                    (evidence_id, from_citizenid, to_citizenid, action, notes)
+                VALUES (?, ?, ?, 'transfer_accepted', ?)
+            ]], { evidenceId, item.last_holder, recipient, notes or '' })
+            if not custodyResult or tonumber(custodyResult.affectedRows) ~= 1 then return false end
+            return true
+        end)
         return success == true, success and 'Evidence custody accepted' or 'Evidence acceptance failed'
     end)
 end
@@ -242,22 +258,22 @@ function DeclineEvidenceTransfer(source, evidenceId, notes)
             SELECT id, last_holder, pending_holder FROM mdt_evidence_items WHERE id = ? LIMIT 1
         ]], { evidenceId })
         if not item or item.pending_holder ~= recipient then return false, 'No evidence transfer is pending for you' end
-        local success = MySQL.transaction.await({
-            {
-                query = [[
-                    UPDATE mdt_evidence_items
-                    SET pending_holder = NULL, transfer_requested_by = NULL, transfer_requested_at = NULL
-                    WHERE id = ? AND pending_holder = ?
-                ]], values = { evidenceId, recipient },
-            },
-            {
-                query = [[
-                    INSERT INTO mdt_evidence_custody
-                        (evidence_id, from_citizenid, to_citizenid, action, notes)
-                    VALUES (?, ?, ?, 'transfer_declined', ?)
-                ]], values = { evidenceId, item.last_holder, recipient, notes or '' },
-            },
-        })
+        local success = MySQL.startTransaction(function(query)
+            local updateResult = query([[
+                UPDATE mdt_evidence_items
+                SET pending_holder = NULL, transfer_requested_by = NULL, transfer_requested_at = NULL
+                WHERE id = ? AND pending_holder = ?
+            ]], { evidenceId, recipient })
+            if not updateResult or tonumber(updateResult.affectedRows) ~= 1 then return false end
+
+            local custodyResult = query([[
+                INSERT INTO mdt_evidence_custody
+                    (evidence_id, from_citizenid, to_citizenid, action, notes)
+                VALUES (?, ?, ?, 'transfer_declined', ?)
+            ]], { evidenceId, item.last_holder, recipient, notes or '' })
+            if not custodyResult or tonumber(custodyResult.affectedRows) ~= 1 then return false end
+            return true
+        end)
         return success == true, success and 'Evidence transfer declined' or 'Evidence decline failed'
     end)
 end
@@ -648,7 +664,7 @@ function SendCitizenMail(citizenid, sender, subject, message)
     local sent = pcall(function()
         exports[res]:SendMail({
             to      = email,
-            sender  = sender or 'Capital Region Law Enforcement',
+            sender  = sender or 'Baton Rouge Law Enforcement',
             subject = subject or '',
             message = message or '',
         })

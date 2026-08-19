@@ -9,6 +9,10 @@ export interface CaseRecord {
 	status: CaseStatus;
 	priority: CasePriority;
 	assigned_department?: string;
+	owning_agency?: string;
+	task_force_id?: string | null;
+	lifecycle_status?: "active" | "closed" | "voided";
+	version?: number;
 	created_by: string;
 	created_by_name?: string;
 	created_at: string | number;
@@ -65,6 +69,11 @@ export interface EvidenceItem {
 	transfer_requested_by?: string;
 	transfer_requested_at?: string | number;
 	created_by?: string;
+	owning_agency?: string;
+	task_force_id?: string | null;
+	compartment?: string | null;
+	lifecycle_status?: "active" | "released" | "disposed" | "voided";
+	version?: number;
 	created_at?: string | number;
 	updated_at?: string | number;
 	images?: EvidenceImage[];

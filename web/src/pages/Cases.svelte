@@ -7,6 +7,7 @@
 	import { fileToBase64, formatBytes } from "../services/uploadService";
 	import PersonSearchModal from "../components/report-editor/PersonSearchModal.svelte";
 	import Pagination from "../components/Pagination.svelte";
+	import RecordGovernance from "../components/RecordGovernance.svelte";
 	import type { createTabService } from "../services/tabService.svelte";
 	import type { MDTTab } from "../constants";
 	import type {
@@ -668,6 +669,14 @@
 		{:else if selectedCase}
 			<!-- ==================== CASE DETAIL VIEW ==================== -->
 			<div class="detail-scroll">
+				<RecordGovernance
+					recordType="case"
+					recordId={selectedCase.case.id}
+					owningAgency={selectedCase.case.owning_agency}
+					taskForceId={selectedCase.case.task_force_id}
+					lifecycleStatus={selectedCase.case.lifecycle_status || (selectedCase.case.status === "closed" ? "closed" : "active")}
+					onChanged={() => selectCase(selectedCase!.case.id)}
+				/>
 				<!-- Info Section -->
 				<div class="section">
 					<div class="section-title">Case Information</div>

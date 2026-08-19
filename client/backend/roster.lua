@@ -79,3 +79,23 @@ RegisterNUICallback('restrictOfficerPermission', function(data, cb)
     if not MDTOpen then cb({ success = false }) return end
     cb(ps.callback('ps-mdt:server:restrictOfficerPermission', data) or { success = false })
 end)
+
+RegisterNUICallback('getTaskForces', function(_, cb)
+    if not MDTOpen then cb({ success = false, taskForces = {} }) return end
+    cb(ps.callback('ps-mdt:server:getTaskForces') or { success = false, taskForces = {} })
+end)
+
+RegisterNUICallback('createTaskForce', function(data, cb)
+    if not MDTOpen then cb({ success = false }) return end
+    cb(ps.callback('ps-mdt:server:createTaskForce', data) or { success = false })
+end)
+
+RegisterNUICallback('setTaskForceMember', function(data, cb)
+    if not MDTOpen then cb({ success = false }) return end
+    cb(ps.callback('ps-mdt:server:setTaskForceMember', data) or { success = false })
+end)
+
+RegisterNUICallback('setTaskForceStatus', function(data, cb)
+    if not MDTOpen then cb({ success = false }) return end
+    cb(ps.callback('ps-mdt:server:setTaskForceStatus', data) or { success = false })
+end)

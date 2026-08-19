@@ -11,6 +11,7 @@
 	import { pendingBoloId, clearPendingBolo } from "../stores/navigationStore";
 	import { get } from "svelte/store";
 	import Pagination from "../components/Pagination.svelte";
+	import RecordGovernance from "../components/RecordGovernance.svelte";
 
 	interface Bolo {
 		id: number;
@@ -22,6 +23,10 @@
 		status?: string;
 		officer?: string;
 		createdAt?: string;
+		owningAgency?: string;
+		taskForceId?: string | null;
+		lifecycleStatus?: "active" | "closed" | "voided";
+		version?: number;
 	}
 
 	let { tabService }: { tabService: ReturnType<typeof createTabService> } =
@@ -102,6 +107,14 @@
 
 	function viewBolo(boloId: number) {
 		selectedBolo = bolos.find((item) => item.id === boloId) ?? null;
+	}
+
+	async function reloadBolos() {
+		const selectedId = selectedBolo?.id;
+		bolos = await fetchNui(NUI_EVENTS.CITIZEN.GET_BOLOS, { type: "all", status: "all" });
+		if (selectedId) {
+			selectedBolo = bolos.find((bolo) => bolo.id === selectedId) || null;
+		}
 	}
 
 	async function resolveBolo(boloId: number) {
@@ -298,6 +311,14 @@
 						<p class="notes-body">{selectedBolo.notes}</p>
 					</div>
 				{/if}
+				<RecordGovernance
+					recordType="bolo"
+					recordId={selectedBolo.id}
+					owningAgency={selectedBolo.owningAgency}
+					taskForceId={selectedBolo.taskForceId}
+					lifecycleStatus={selectedBolo.lifecycleStatus || "active"}
+					onChanged={reloadBolos}
+				/>
 			</div>
 			<div class="modal-footer">
 				<div class="modal-footer-left">

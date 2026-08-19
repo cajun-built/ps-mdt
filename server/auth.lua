@@ -10,10 +10,11 @@ end
 
 local function getLeoContext(source)
     if GetResourceState('cgn_leo_core') ~= 'started' then return nil end
-    local ok, context = pcall(function()
+    local ok, context, reason = pcall(function()
         return exports.cgn_leo_core:GetContext(source)
     end)
-    return ok and context or nil
+    if not ok then return nil, 'service_unavailable' end
+    return context, reason
 end
 
 function IsLeoMdtSource(source)
@@ -24,6 +25,11 @@ end
 -- resolved by cgn_leo_core so rank inheritance, assignments, certifications,
 -- restrictions and compartments have one server-side source of truth.
 local leoPermissionMap = {
+    record_view = { permission = 'records.view' },
+    record_create = { permission = 'records.create' },
+    record_supplement = { permission = 'records.supplement' },
+    record_lifecycle = { permission = 'records.lifecycle' },
+    evidence_lifecycle = { permission = 'evidence.release' },
     citizens_search = { permission = 'records.search' },
     citizens_edit_licenses = { permission = 'records.lifecycle' },
     bolos_view = { permission = 'records.view' },
@@ -64,6 +70,8 @@ local leoPermissionMap = {
     notes_edit_department = { permission = 'records.supplement' },
     roster_manage_certifications = { permission = 'certifications.issue' },
     roster_manage_officers = { permission = 'personnel.actions', compartment = 'personnel' },
+    taskforces_view = { permission = 'records.view' },
+    taskforces_manage = { permission = 'taskforces.manage' },
     ppr_view = { permission = 'personnel.protected_view', compartment = 'personnel' },
     ppr_manage = { permission = 'personnel.actions', compartment = 'personnel' },
     fto_view = { permission = 'certifications.view' },
@@ -91,14 +99,14 @@ local leoPermissionMap = {
     management_settings = { permission = 'compartments.manage' },
 }
 
-local function authorizeLeoPermission(source, permName)
+function AuthorizeLeoPermission(source, permName, options)
     local mapped = leoPermissionMap[permName]
     if not mapped or GetResourceState('cgn_leo_core') ~= 'started' then return false end
+    options = options or {}
+    options.requireDuty = true
+    options.compartment = options.compartment or mapped.compartment
     local ok, allowed = pcall(function()
-        return exports.cgn_leo_core:Authorize(source, mapped.permission, {
-            requireDuty = true,
-            compartment = mapped.compartment,
-        })
+        return exports.cgn_leo_core:Authorize(source, mapped.permission, options)
     end)
     return ok and allowed == true
 end
@@ -144,7 +152,7 @@ function CheckPermission(source, permName)
 
     local jobType = ps.getJobType(source)
     if jobType == Config.PoliceJobType then
-        return authorizeLeoPermission(source, permName)
+        return AuthorizeLeoPermission(source, permName)
     end
 
     -- Non-LEO domains retain PS MDT's configured grade permissions.
@@ -317,7 +325,7 @@ ps.registerCallback(tostring(GetCurrentResourceName())..':server:checkAuth', fun
     local civAccess = Config.CivilianAccess and Config.CivilianAccess.enabled
     local jobType = ps.getJobType(source)
     if jobType == Config.PoliceJobType then
-        local context = getLeoContext(source)
+        local context, reason = getLeoContext(source)
         if context then
             return {
                 authorized = context.onDuty == true,
@@ -326,7 +334,13 @@ ps.registerCallback(tostring(GetCurrentResourceName())..':server:checkAuth', fun
                 jobType = 'leo',
             }
         end
-        return false
+        return {
+            authorized = false,
+            isLEO = true,
+            onDuty = false,
+            jobType = 'leo',
+            reason = reason or 'personnel_setup_required',
+        }
     end
     local isAuthed = CheckAuth(source)
     if isAuthed then
@@ -350,7 +364,7 @@ ps.registerCallback(tostring(GetCurrentResourceName())..':server:getMyPermission
     if ps.getJobType(src) == Config.PoliceJobType then
         local granted = {}
         for _, permission in ipairs((Config and Config.ManagementPermissions) or {}) do
-            if authorizeLeoPermission(src, permission) then granted[#granted + 1] = permission end
+            if AuthorizeLeoPermission(src, permission) then granted[#granted + 1] = permission end
         end
         return { permissions = granted, isBoss = false }
     end
@@ -392,4 +406,28 @@ ps.registerCallback(tostring(GetCurrentResourceName())..':server:getMyPermission
 
     -- No permissions found for this grade
     return { permissions = {}, isBoss = false }
+end)
+
+ps.registerCallback(tostring(GetCurrentResourceName())..':server:setLeoDuty', function(source, onDuty)
+    if ps.getJobType(source) ~= Config.PoliceJobType then
+        return { success = false, reason = 'job_mismatch' }
+    end
+    if GetResourceState('cgn_leo_core') ~= 'started' then
+        return { success = false, reason = 'service_unavailable' }
+    end
+
+    local ok, success, result = pcall(function()
+        if onDuty == true then
+            return exports.cgn_leo_core:StartDuty(source)
+        end
+        return exports.cgn_leo_core:EndDuty(source, 'mdt_clock_out')
+    end)
+    if not ok then
+        ps.error('LEO duty request failed: ' .. tostring(success))
+        return { success = false, reason = 'service_unavailable' }
+    end
+    if success == true then
+        return { success = true, reason = nil, data = result }
+    end
+    return { success = false, reason = result, data = nil }
 end)

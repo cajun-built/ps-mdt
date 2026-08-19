@@ -3,13 +3,15 @@ local resourceName = tostring(GetCurrentResourceName())
 ps.registerCallback(resourceName .. ':server:getEvidenceItems', function(source, page, limit, filters)
     local src = source
     if not CheckAuth(src) then return { success = false, error = 'Unauthorized' } end
+    if not CheckPermission(src, 'evidence_view') then return { success = false, error = 'Insufficient permissions' } end
 
     page = tonumber(page) or 1
     limit = tonumber(limit) or 20
     local offset = (page - 1) * limit
 
-    local queryParts = { '1=1' }
-    local values = {}
+    local visibilityClause, visibilityValues = GetMdtEvidenceVisibility(src)
+    local queryParts = { visibilityClause, "lifecycle_status <> 'voided'" }
+    local values = { table.unpack(visibilityValues) }
 
     if filters and filters.caseId then
         queryParts[#queryParts + 1] = 'case_id = ?'
@@ -37,7 +39,8 @@ ps.registerCallback(resourceName .. ':server:getEvidenceItems', function(source,
     local evidence = MySQL.query.await(([[
         SELECT id, case_id, report_id, title, type, serial, notes, location, stash_id, stored,
             last_holder, pending_holder, transfer_requested_by, transfer_requested_at,
-            created_by, created_at, updated_at
+            created_by, owning_agency, task_force_id, compartment, lifecycle_status, version,
+            created_at, updated_at
         FROM mdt_evidence_items
         WHERE %s
         ORDER BY created_at DESC
@@ -89,6 +92,7 @@ end)
 ps.registerCallback(resourceName .. ':server:searchEvidenceItems', function(source, query, page, limit)
     local src = source
     if not CheckAuth(src) then return { success = false, error = 'Unauthorized' } end
+    if not CheckPermission(src, 'evidence_view') then return { success = false, error = 'Insufficient permissions' } end
 
     local _, likeQuery = NormalizeSearch(query)
     page = tonumber(page) or 1
@@ -97,24 +101,33 @@ ps.registerCallback(resourceName .. ':server:searchEvidenceItems', function(sour
         return { success = true, data = { items = {}, total = 0, page = 1, limit = limit } }
     end
     local offset = (page - 1) * limit
+    local visibilityClause, visibilityValues = GetMdtEvidenceVisibility(src)
+    local countValues = { table.unpack(visibilityValues) }
+    for _ = 1, 5 do countValues[#countValues + 1] = likeQuery end
 
-    local totalRow = MySQL.single.await([[
+    local totalRow = MySQL.single.await(([=[
         SELECT COUNT(id) as total
         FROM mdt_evidence_items
-        WHERE title LIKE ? OR serial LIKE ? OR notes LIKE ? OR location LIKE ? OR stash_id LIKE ?
-    ]], { likeQuery, likeQuery, likeQuery, likeQuery, likeQuery })
+        WHERE %s AND lifecycle_status <> 'voided'
+          AND (title LIKE ? OR serial LIKE ? OR notes LIKE ? OR location LIKE ? OR stash_id LIKE ?)
+    ]=]):format(visibilityClause), countValues)
 
     local total = totalRow and totalRow.total or 0
 
-    local evidence = MySQL.query.await([[
+    local listValues = { table.unpack(countValues) }
+    listValues[#listValues + 1] = limit
+    listValues[#listValues + 1] = offset
+    local evidence = MySQL.query.await(([=[
         SELECT id, case_id, report_id, title, type, serial, notes, location, stash_id, stored,
             last_holder, pending_holder, transfer_requested_by, transfer_requested_at,
-            created_by, created_at, updated_at
+            created_by, owning_agency, task_force_id, compartment, lifecycle_status, version,
+            created_at, updated_at
         FROM mdt_evidence_items
-        WHERE title LIKE ? OR serial LIKE ? OR notes LIKE ? OR location LIKE ? OR stash_id LIKE ?
+        WHERE %s AND lifecycle_status <> 'voided'
+          AND (title LIKE ? OR serial LIKE ? OR notes LIKE ? OR location LIKE ? OR stash_id LIKE ?)
         ORDER BY created_at DESC
         LIMIT ? OFFSET ?
-    ]], { likeQuery, likeQuery, likeQuery, likeQuery, likeQuery, limit, offset })
+    ]=]):format(visibilityClause), listValues)
 
     if evidence and #evidence > 0 then
         local ids = {}
@@ -194,10 +207,20 @@ ps.registerCallback(resourceName .. ':server:addEvidenceItem', function(source, 
         end
     end
 
+    local owningAgency, taskForceId, scopeError = ResolveMdtEvidenceScope(
+        src, caseId, reportId, payload.taskForceId or evidence.taskForceId
+    )
+    if not owningAgency then return { success = false, error = scopeError } end
+    local compartment, compartmentError = ResolveMdtCompartment(
+        src, owningAgency, taskForceId, evidence.compartment
+    )
+    if compartmentError then return { success = false, error = compartmentError } end
+
     local evidenceId = MySQL.insert.await([[
         INSERT INTO mdt_evidence_items
-        (case_id, report_id, title, type, serial, notes, location, stash_id, stored, last_holder, created_by)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        (case_id, report_id, title, type, serial, notes, location, stash_id,
+         stored, last_holder, created_by, owning_agency, task_force_id, compartment)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     ]], {
         caseId,
         reportId,
@@ -209,7 +232,10 @@ ps.registerCallback(resourceName .. ':server:addEvidenceItem', function(source, 
         evidence.stashId or '',
         evidence.stored and 1 or 0,
         ps.getIdentifier(src),
-        ps.getIdentifier(src)
+        ps.getIdentifier(src),
+        owningAgency,
+        taskForceId,
+        compartment
     })
 
     if not evidenceId then
@@ -237,6 +263,10 @@ ps.registerCallback(resourceName .. ':server:updateEvidenceItem', function(sourc
     if not evidenceId or not evidence then
         return { success = false, error = 'Invalid evidence' }
     end
+
+    local beforeRecord = GetMdtRecord('evidence', evidenceId)
+    local allowed, denied = AuthorizeMdtRecord(src, 'evidence_create', 'evidence', beforeRecord, true)
+    if not allowed then return { success = false, error = denied } end
 
     local updates = {}
     local values = {}
@@ -271,11 +301,17 @@ ps.registerCallback(resourceName .. ':server:updateEvidenceItem', function(sourc
     end
 
     if evidence.caseId then
+        local caseRecord = GetMdtRecord('case', evidence.caseId)
+        local caseAllowed, caseDenied = AuthorizeMdtRecord(src, 'record_create', 'case', caseRecord, true)
+        if not caseAllowed then return { success = false, error = caseDenied } end
         updates[#updates + 1] = 'case_id = ?'
         values[#values + 1] = tonumber(evidence.caseId)
     end
 
     if evidence.reportId then
+        local reportRecord = GetMdtRecord('report', evidence.reportId)
+        local reportAllowed, reportDenied = AuthorizeMdtRecord(src, 'record_create', 'report', reportRecord, true)
+        if not reportAllowed then return { success = false, error = reportDenied } end
         updates[#updates + 1] = 'report_id = ?'
         values[#values + 1] = tonumber(evidence.reportId)
     end
@@ -284,11 +320,60 @@ ps.registerCallback(resourceName .. ':server:updateEvidenceItem', function(sourc
         return { success = false, error = 'No updates provided' }
     end
 
-    values[#values + 1] = evidenceId
-    local success = MySQL.update.await(('UPDATE mdt_evidence_items SET %s WHERE id = ?'):format(table.concat(updates, ', ')), values)
+    local nextVersion = (tonumber(beforeRecord.version) or 1) + 1
+    updates[#updates + 1] = 'version = ?'
+    values[#values + 1] = nextVersion
 
-    if not success then
-        return { success = false, error = 'Failed to update evidence' }
+    values[#values + 1] = evidenceId
+    values[#values + 1] = tonumber(beforeRecord.version) or 1
+
+    local actor = GetMdtRecordActor(src)
+    if not actor then return { success = false, error = 'identity_unavailable' } end
+    local afterRecord = {}
+    for key, value in pairs(beforeRecord) do afterRecord[key] = value end
+    if evidence.title then afterRecord.title = evidence.title end
+    if evidence.type then afterRecord.type = evidence.type end
+    if evidence.serial then afterRecord.serial = evidence.serial end
+    if evidence.notes then afterRecord.notes = evidence.notes end
+    if evidence.location then afterRecord.location = evidence.location end
+    if evidence.stashId then afterRecord.stash_id = evidence.stashId end
+    if evidence.stored ~= nil then afterRecord.stored = evidence.stored and 1 or 0 end
+    if evidence.caseId then afterRecord.case_id = tonumber(evidence.caseId) end
+    if evidence.reportId then afterRecord.report_id = tonumber(evidence.reportId) end
+    afterRecord.version = nextVersion
+    local reason = type(evidence.reason) == 'string' and evidence.reason:gsub('^%s+', ''):gsub('%s+$', '')
+        or 'Evidence correction submitted through MDT'
+    local transactionFailure = 'Failed to update evidence'
+    local callOk, success = pcall(function()
+        return MySQL.startTransaction(function(query)
+            local updateResult = query(
+                ('UPDATE mdt_evidence_items SET %s WHERE id = ? AND version = ?'):format(table.concat(updates, ', ')),
+                values
+            )
+            if not updateResult or tonumber(updateResult.affectedRows) ~= 1 then
+                transactionFailure = 'record_version_conflict'
+                return false
+            end
+
+            local revisionResult = query([[
+                INSERT INTO mdt_record_revisions
+                    (record_type, record_id, revision_number, action, author_citizenid,
+                     author_name, author_agency, reason, before_json, after_json)
+                VALUES ('evidence', ?, ?, 'corrected', ?, ?, ?, ?, ?, ?)
+            ]], {
+                evidenceId, nextVersion, actor.citizenid, actor.name, actor.agency,
+                reason, json.encode(beforeRecord), json.encode(afterRecord),
+            })
+            if not revisionResult or tonumber(revisionResult.affectedRows) ~= 1 then
+                transactionFailure = 'revision_failed'
+                return false
+            end
+            return true
+        end)
+    end)
+
+    if not callOk or success ~= true then
+        return { success = false, error = transactionFailure }
     end
 
     if ps.auditLog then
@@ -301,29 +386,24 @@ end)
 ps.registerCallback(resourceName .. ':server:deleteEvidenceItem', function(source, evidenceId)
     local src = source
     if not CheckAuth(src) then return { success = false, error = 'Unauthorized' } end
-    if IsLeoMdtSource(src) then return { success = false, error = 'Submitted evidence items are permanent records and cannot be deleted' } end
-
     evidenceId = tonumber(evidenceId)
     if not evidenceId then
         return { success = false, error = 'Invalid evidence id' }
     end
 
-    local success = MySQL.query.await('DELETE FROM mdt_evidence_items WHERE id = ?', { evidenceId })
-    if not success then
-        return { success = false, error = 'Failed to delete evidence' }
-    end
-
-    if ps.auditLog then
-        ps.auditLog(src, 'evidence_deleted', 'evidence', evidenceId, {})
-    end
-
-    return { success = true }
+    local success, errorCode = SetMdtRecordLifecycle(
+        src, 'evidence', evidenceId, 'voided', 'Evidence voided through MDT deletion action'
+    )
+    return { success = success, error = errorCode }
 end)
 
 ps.registerCallback(resourceName .. ':server:transferEvidenceItem', function(source, evidenceId, toCitizenId, notes)
     local src = source
     if not CheckAuth(src) then return { success = false, error = 'Unauthorized' } end
     if not CheckPermission(src, 'evidence_transfer') then return { success = false, error = 'Insufficient permissions' } end
+    local evidenceRecord = GetMdtRecord('evidence', evidenceId)
+    local allowed, denied = AuthorizeMdtRecord(src, 'evidence_transfer', 'evidence', evidenceRecord, true)
+    if not allowed then return { success = false, error = denied } end
 
     local success, message = RequestEvidenceTransfer(src, evidenceId, toCitizenId, notes)
     if success and ps.auditLog then
@@ -332,7 +412,9 @@ ps.registerCallback(resourceName .. ':server:transferEvidenceItem', function(sou
             notes = notes
         })
     end
-    return { success = success, error = success and nil or message, message = message }
+    local errorMessage = nil
+    if not success then errorMessage = message end
+    return { success = success, error = errorMessage, message = message }
 end)
 
 ps.registerCallback(resourceName .. ':server:acceptEvidenceTransfer', function(source, evidenceId, notes)
@@ -342,7 +424,9 @@ ps.registerCallback(resourceName .. ':server:acceptEvidenceTransfer', function(s
     if success and ps.auditLog then
         ps.auditLog(src, 'evidence_transfer_accepted', 'evidence', evidenceId, { notes = notes })
     end
-    return { success = success, error = success and nil or message, message = message }
+    local errorMessage = nil
+    if not success then errorMessage = message end
+    return { success = success, error = errorMessage, message = message }
 end)
 
 ps.registerCallback(resourceName .. ':server:declineEvidenceTransfer', function(source, evidenceId, notes)
@@ -352,7 +436,9 @@ ps.registerCallback(resourceName .. ':server:declineEvidenceTransfer', function(
     if success and ps.auditLog then
         ps.auditLog(src, 'evidence_transfer_declined', 'evidence', evidenceId, { notes = notes })
     end
-    return { success = success, error = success and nil or message, message = message }
+    local errorMessage = nil
+    if not success then errorMessage = message end
+    return { success = success, error = errorMessage, message = message }
 end)
 
 ps.registerCallback(resourceName .. ':server:getEvidenceCustody', function(source, evidenceId)
@@ -363,6 +449,9 @@ ps.registerCallback(resourceName .. ':server:getEvidenceCustody', function(sourc
     if not evidenceId then
         return {}
     end
+    local evidenceRecord = GetMdtRecord('evidence', evidenceId)
+    local allowed = AuthorizeMdtRecord(src, 'record_view', 'evidence', evidenceRecord, false)
+    if not allowed then return {} end
 
     local custody = MySQL.query.await([[
         SELECT id, evidence_id, from_citizenid, to_citizenid, action, notes, created_at
@@ -380,6 +469,9 @@ ps.registerCallback(resourceName .. ':server:logEvidenceViewed', function(source
 
     evidenceId = tonumber(evidenceId)
     if not evidenceId then return { success = false } end
+    local evidenceRecord = GetMdtRecord('evidence', evidenceId)
+    local allowed, denied = AuthorizeMdtRecord(src, 'record_view', 'evidence', evidenceRecord, false)
+    if not allowed then return { success = false, error = denied } end
 
     local citizenid = ps.getIdentifier(src)
 
@@ -400,6 +492,9 @@ ps.registerCallback(resourceName .. ':server:addEvidenceImage', function(source,
     if not evidenceId or not image then
         return { success = false, error = 'Invalid image' }
     end
+    local evidenceRecord = GetMdtRecord('evidence', evidenceId)
+    local allowed, denied = AuthorizeMdtRecord(src, 'evidence_create', 'evidence', evidenceRecord, true)
+    if not allowed then return { success = false, error = denied } end
 
     local url = image.url or image.data or ''
     local label = image.label or ''
@@ -490,16 +585,19 @@ ps.registerCallback(resourceName .. ':server:linkEvidenceToCase', function(sourc
         return { success = false, error = 'Invalid evidence or case' }
     end
 
-    local caseExists = MySQL.single.await('SELECT id FROM mdt_cases WHERE id = ?', { caseId })
-    if not caseExists then
-        return { success = false, error = 'Case #' .. tostring(caseId) .. ' does not exist' }
-    end
+    local evidenceRecord = GetMdtRecord('evidence', evidenceId)
+    local evidenceAllowed, evidenceDenied = AuthorizeMdtRecord(src, 'evidence_create', 'evidence', evidenceRecord, true)
+    if not evidenceAllowed then return { success = false, error = evidenceDenied } end
+    local caseRecord = GetMdtRecord('case', caseId)
+    local caseAllowed, caseDenied = AuthorizeMdtRecord(src, 'record_create', 'case', caseRecord, true)
+    if not caseAllowed then return { success = false, error = caseDenied } end
 
     MySQL.update.await('UPDATE mdt_evidence_items SET case_id = ? WHERE id = ?', { caseId, evidenceId })
 
     if reportId then
-        local reportExists = MySQL.single.await('SELECT id FROM mdt_reports WHERE id = ?', { reportId })
-        if reportExists then
+        local reportRecord = GetMdtRecord('report', reportId)
+        local reportAllowed = AuthorizeMdtRecord(src, 'record_create', 'report', reportRecord, true)
+        if reportAllowed then
             linkReportToCase(reportId, caseId, ps.getIdentifier(src))
         end
     end
@@ -525,10 +623,12 @@ ps.registerCallback(resourceName .. ':server:linkEvidenceToReport', function(sou
         return { success = false, error = 'Invalid evidence or report' }
     end
 
-    local reportExists = MySQL.single.await('SELECT id FROM mdt_reports WHERE id = ?', { reportId })
-    if not reportExists then
-        return { success = false, error = 'Report #' .. tostring(reportId) .. ' does not exist' }
-    end
+    local evidenceRecord = GetMdtRecord('evidence', evidenceId)
+    local evidenceAllowed, evidenceDenied = AuthorizeMdtRecord(src, 'evidence_create', 'evidence', evidenceRecord, true)
+    if not evidenceAllowed then return { success = false, error = evidenceDenied } end
+    local reportRecord = GetMdtRecord('report', reportId)
+    local reportAllowed, reportDenied = AuthorizeMdtRecord(src, 'record_create', 'report', reportRecord, true)
+    if not reportAllowed then return { success = false, error = reportDenied } end
 
     MySQL.update.await('UPDATE mdt_evidence_items SET report_id = ? WHERE id = ?', { reportId, evidenceId })
 
@@ -551,14 +651,22 @@ ps.registerCallback(resourceName .. ':server:createCaseFromEvidence', function(s
         return { success = false, error = 'Invalid evidence' }
     end
 
+    local evidenceRecord = GetMdtRecord('evidence', evidenceId)
+    local evidenceAllowed, evidenceDenied = AuthorizeMdtRecord(src, 'evidence_create', 'evidence', evidenceRecord, true)
+    if not evidenceAllowed then return { success = false, error = evidenceDenied } end
+
     local citizenid = ps.getIdentifier(src)
     local createdByName = (ps.getMetadata(src, 'callsign') or '') .. ' ' .. (ps.getPlayerName(src) or '')
     createdByName = createdByName:gsub('^%s+', ''):gsub('%s+$', '')
 
     local caseId = MySQL.insert.await([[INSERT INTO mdt_cases
-        (case_number, title, summary, status, priority, assigned_department, created_by, created_by_name)
-        VALUES ('', ?, ?, 'open', 'medium', ?, ?, ?)
-    ]], { 'Evidence Follow-up', 'Case created from evidence link', ps.getJobName(src) or 'police', citizenid, createdByName })
+        (case_number, title, summary, status, priority, assigned_department,
+         owning_agency, task_force_id, created_by, created_by_name)
+        VALUES ('', ?, ?, 'open', 'medium', ?, ?, ?, ?, ?)
+    ]], {
+        'Evidence Follow-up', 'Case created from evidence link', evidenceRecord.owning_agency,
+        evidenceRecord.owning_agency, evidenceRecord.task_force_id, citizenid, createdByName
+    })
 
     if not caseId then
         return { success = false, error = 'Failed to create case' }

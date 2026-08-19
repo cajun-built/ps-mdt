@@ -17,6 +17,10 @@ export interface Report {
     charges: ReportCharge[];
     restrictions: string[];
     vehicles: ReportVehicle[];
+    owningAgency?: string;
+    taskForceId?: string | null;
+    lifecycleStatus?: "draft" | "submitted" | "approved" | "closed" | "voided";
+    version?: number;
 }
 
 export interface Officer {

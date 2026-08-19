@@ -33,6 +33,7 @@
 	import { compressImage } from "../services/uploadService";
 	import { createCollabService, type CollabEditor } from "../services/collabService.svelte";
 	import CollabPresenceBar from "../components/report-editor/CollabPresenceBar.svelte";
+	import RecordGovernance from "../components/RecordGovernance.svelte";
 
 	import type { createTabService } from "../services/tabService.svelte";
 	import { getReportTypesForJob, type MDTTab } from "../constants";
@@ -1026,6 +1027,17 @@
 			{/if}
 			</div>
 		</div>
+		{#if !isEMS && Number(report.reportId) > 0}
+			<div class="governance-wrapper">
+				<RecordGovernance
+					recordType="report"
+					recordId={Number(report.reportId)}
+					owningAgency={report.owningAgency}
+					taskForceId={report.taskForceId}
+					lifecycleStatus={report.lifecycleStatus || "submitted"}
+				/>
+			</div>
+		{/if}
 	{:catch error}
 		<div class="error-state">
 			<p>Failed to load report: {error.message}</p>
@@ -1145,6 +1157,11 @@
 		color: rgba(255, 255, 255, 0.9);
 		overflow: hidden;
 		position: relative;
+	}
+
+	.governance-wrapper {
+		padding: 0 16px 16px;
+		flex-shrink: 0;
 	}
 
 	.loading-state {

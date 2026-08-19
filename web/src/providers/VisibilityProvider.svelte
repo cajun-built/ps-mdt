@@ -33,18 +33,24 @@
 
 				debugLog("VisibilityProvider received setVisible:", data);
 				store.visibility = data.visible;
+				if (data.visible) {
+					void fetchNui(NUI_EVENTS.NAVIGATION.FOCUS_UI);
+				}
 			},
 		);
 
 		const keyHandler = (e: KeyboardEvent) => {
-			if (store.visibility && ["Escape"].includes(e.code)) {
-				fetchNui(NUI_EVENTS.NAVIGATION.CLOSE_UI);
+			if (store.visibility && (e.key === "Escape" || e.code === "Escape" || e.keyCode === 27)) {
+				e.preventDefault();
+				e.stopPropagation();
+				store.visibility = false;
+				void fetchNui(NUI_EVENTS.NAVIGATION.CLOSE_UI);
 			}
 		};
 
-		window.addEventListener("keydown", keyHandler);
+		window.addEventListener("keydown", keyHandler, true);
 
-		return () => window.removeEventListener("keydown", keyHandler);
+		return () => window.removeEventListener("keydown", keyHandler, true);
 	});
 </script>
 

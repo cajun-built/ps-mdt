@@ -11,16 +11,19 @@ ps.registerCallback(resourceName .. ':server:deleteICU', function(source, payloa
         return { success = false, message = 'Missing ICU record ID' }
     end
 
-    -- ICU records are stored as BOLOs with type context - ensure we only delete the correct record
     local rows = MySQL.query.await('SELECT id FROM mdt_bolos WHERE id = ?', { id })
     if not rows or #rows == 0 then
         return { success = false, message = 'ICU record not found' }
     end
-    MySQL.update.await('DELETE FROM mdt_bolos WHERE id = ?', { id })
-
-    if ps.auditLog then
-        ps.auditLog(src, 'icu_deleted', 'icu', tostring(id), {})
+    local changed = MySQL.update.await([[
+        UPDATE mdt_bolos
+        SET lifecycle_status = 'voided', status = 'resolved', version = version + 1
+        WHERE id = ?
+    ]], { id })
+    if changed and ps.auditLog then
+        ps.auditLog(src, 'icu_voided', 'icu', tostring(id), {
+            reason = payload.reason or 'ICU record voided through MDT deletion action'
+        })
     end
-
-    return { success = true, message = 'ICU record deleted' }
+    return { success = changed ~= nil, message = changed and 'ICU record voided' or 'ICU record update failed' }
 end)

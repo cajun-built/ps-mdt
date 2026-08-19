@@ -47,7 +47,7 @@ local function collectCitizenFlags(citizenids)
     local bOk, boloRows = pcall(MySQL.query.await, ([[
         SELECT subject_id
         FROM mdt_bolos
-        WHERE type = ? AND status = ?
+        WHERE type = ? AND status = ? AND lifecycle_status <> 'voided'
         AND subject_id IN (%s)
     ]]):format(inClause), boloValues)
 
@@ -88,6 +88,7 @@ end
 ps.registerCallback(resourceName .. ':server:getCitizens', function(source, page)
     local src = source
     if not CheckAuth(src) then return {} end
+    if not CheckPermission(src, 'bolos_view') then return {} end
     local startTime = os.clock()
     page = page or 1
     -- The Citizens UI filters AND paginates client-side over the full set
@@ -365,15 +366,15 @@ ps.registerCallback(resourceName .. ':server:getBOLO', function(source, boloType
     local BOLOS
     if boloType == 'all' then
         if boloStatus == 'all' then
-            BOLOS = MySQL.query.await('SELECT id, type, subject_id, subject_name, reportId, notes, status FROM mdt_bolos ORDER BY id DESC', {})
+            BOLOS = MySQL.query.await('SELECT id, type, subject_id, subject_name, reportId, notes, status, owning_agency, task_force_id, lifecycle_status, version, created_by, created_at, updated_at FROM mdt_bolos WHERE lifecycle_status <> \'voided\' ORDER BY id DESC', {})
         else
-            BOLOS = MySQL.query.await('SELECT id, type, subject_id, subject_name, reportId, notes, status FROM mdt_bolos WHERE status = ? ORDER BY id DESC', { boloStatus })
+            BOLOS = MySQL.query.await('SELECT id, type, subject_id, subject_name, reportId, notes, status, owning_agency, task_force_id, lifecycle_status, version, created_by, created_at, updated_at FROM mdt_bolos WHERE lifecycle_status <> \'voided\' AND status = ? ORDER BY id DESC', { boloStatus })
         end
     else
         if boloStatus == 'all' then
-            BOLOS = MySQL.query.await('SELECT id, type, subject_id, subject_name, reportId, notes, status FROM mdt_bolos WHERE type = ? ORDER BY id DESC', { boloType })
+            BOLOS = MySQL.query.await('SELECT id, type, subject_id, subject_name, reportId, notes, status, owning_agency, task_force_id, lifecycle_status, version, created_by, created_at, updated_at FROM mdt_bolos WHERE lifecycle_status <> \'voided\' AND type = ? ORDER BY id DESC', { boloType })
         else
-            BOLOS = MySQL.query.await('SELECT id, type, subject_id, subject_name, reportId, notes, status FROM mdt_bolos WHERE type = ? AND status = ? ORDER BY id DESC', { boloType, boloStatus })
+            BOLOS = MySQL.query.await('SELECT id, type, subject_id, subject_name, reportId, notes, status, owning_agency, task_force_id, lifecycle_status, version, created_by, created_at, updated_at FROM mdt_bolos WHERE lifecycle_status <> \'voided\' AND type = ? AND status = ? ORDER BY id DESC', { boloType, boloStatus })
         end
     end
 
@@ -386,6 +387,13 @@ ps.registerCallback(resourceName .. ':server:getBOLO', function(source, boloType
             type = v.type,
             notes = v.notes or '',
             status = v.status,
+            owningAgency = v.owning_agency,
+            taskForceId = v.task_force_id,
+            lifecycleStatus = v.lifecycle_status,
+            version = v.version,
+            createdBy = v.created_by,
+            createdAt = v.created_at,
+            updatedAt = v.updated_at,
         }
         table.insert(result, formattedBolo)
     end
@@ -475,7 +483,7 @@ ps.registerCallback(resourceName .. ':server:getCitizenProfile', function(source
     local activeBolos = MySQL.query.await([[
         SELECT id, reportId, type, notes
         FROM mdt_bolos
-        WHERE status = ? AND subject_id = ?
+        WHERE status = ? AND lifecycle_status <> 'voided' AND subject_id = ?
         ORDER BY id DESC
     ]], { 'active', citizenid }) or {}
     local activeBoloDetails = {}
@@ -905,12 +913,15 @@ ps.registerCallback(resourceName .. ':server:createBolo', function(source, paylo
 
 	local reportValue = reportId and tonumber(reportId) or nil
 	local subjectValue = subjectId and tostring(subjectId) or ''
+	local owningAgency, taskForceId, scopeError = ResolveMdtCreateScope(src, payload.taskForceId, 'bolo')
+	if not owningAgency then return { success = false, message = scopeError } end
 
 	-- Prevent duplicate: one active BOLO per subject per report
 	if reportValue and subjectValue ~= '' then
 		local existing = MySQL.single.await([[
 			SELECT id FROM mdt_bolos
 			WHERE type = ? AND subject_id = ? AND reportId = ? AND status = 'active'
+			  AND lifecycle_status <> 'voided'
 			LIMIT 1
 		]], { boloType, subjectValue, reportValue })
 		if existing then
@@ -919,14 +930,19 @@ ps.registerCallback(resourceName .. ':server:createBolo', function(source, paylo
 	end
 
 	local inserted = MySQL.insert.await([[
-		INSERT INTO mdt_bolos (type, subject_id, subject_name, reportId, notes, status)
-		VALUES (?, ?, ?, ?, ?, 'active')
+		INSERT INTO mdt_bolos
+			(type, subject_id, subject_name, reportId, notes, status,
+			 owning_agency, task_force_id, created_by)
+		VALUES (?, ?, ?, ?, ?, 'active', ?, ?, ?)
 	]], {
 		boloType,
 		subjectValue,
 		subjectName,
 		reportValue,
 		notes or '',
+		owningAgency,
+		taskForceId,
+		ps.getIdentifier(src),
 	})
 
     if not inserted then
@@ -940,16 +956,16 @@ end)
 ps.registerCallback(resourceName .. ':server:deleteBolo', function(source, payload)
     local src = source
     if not CheckAuth(src) then return { success = false, message = 'Unauthorized' } end
-    if IsLeoMdtSource(src) then return { success = false, message = 'Submitted BOLOs are permanent records and cannot be deleted' } end
-
     payload = payload or {}
     local id = tonumber(payload.id)
     if not id then
         return { success = false, message = 'Invalid BOLO ID' }
     end
 
-    MySQL.query.await('DELETE FROM mdt_bolos WHERE id = ?', { id })
-    return { success = true }
+    local success, errorCode = SetMdtRecordLifecycle(
+        src, 'bolo', id, 'voided', payload.reason or 'BOLO voided through MDT deletion action'
+    )
+    return { success = success, message = errorCode }
 end)
 
 -- Update BOLO status (resolve, deactivate, reactivate)
@@ -969,7 +985,63 @@ ps.registerCallback(resourceName .. ':server:updateBoloStatus', function(source,
         return { success = false, message = 'Invalid status' }
     end
 
-    MySQL.update.await('UPDATE mdt_bolos SET status = ? WHERE id = ?', { status, id })
+    local beforeRecord = GetMdtRecord('bolo', id)
+    local allowed, denied = AuthorizeMdtRecord(src, 'record_lifecycle', 'bolo', beforeRecord, true)
+    if not allowed then return { success = false, message = denied } end
+    if beforeRecord.lifecycle_status == 'voided' then
+        return { success = false, message = 'invalid_lifecycle_transition' }
+    end
+
+    local lifecycleStatus = status == 'active' and 'active' or 'closed'
+    if beforeRecord.lifecycle_status == lifecycleStatus and beforeRecord.status == status then
+        return { success = false, message = 'lifecycle_unchanged' }
+    end
+
+    local nextVersion = (tonumber(beforeRecord.version) or 1) + 1
+    local actor = GetMdtRecordActor(src)
+    if not actor then return { success = false, message = 'identity_unavailable' } end
+    local afterRecord = {}
+    for key, value in pairs(beforeRecord) do afterRecord[key] = value end
+    afterRecord.status = status
+    afterRecord.lifecycle_status = lifecycleStatus
+    afterRecord.version = nextVersion
+    local reason = type(payload.reason) == 'string' and payload.reason:gsub('^%s+', ''):gsub('%s+$', '')
+        or 'BOLO status changed through MDT'
+    local transactionFailure = 'Failed to update BOLO status'
+    local callOk, success = pcall(function()
+        return MySQL.startTransaction(function(query)
+            local updateResult = query([[
+                UPDATE mdt_bolos
+                SET status = ?, lifecycle_status = ?, version = ?
+                WHERE id = ? AND version = ?
+            ]], {
+                status, lifecycleStatus, nextVersion, id,
+                tonumber(beforeRecord.version) or 1,
+            })
+            if not updateResult or tonumber(updateResult.affectedRows) ~= 1 then
+                transactionFailure = 'record_version_conflict'
+                return false
+            end
+
+            local revisionResult = query([[
+                INSERT INTO mdt_record_revisions
+                    (record_type, record_id, revision_number, action, author_citizenid,
+                     author_name, author_agency, reason, before_json, after_json)
+                VALUES ('bolo', ?, ?, 'status_changed', ?, ?, ?, ?, ?, ?)
+            ]], {
+                id, nextVersion, actor.citizenid, actor.name, actor.agency,
+                reason, json.encode(beforeRecord), json.encode(afterRecord),
+            })
+            if not revisionResult or tonumber(revisionResult.affectedRows) ~= 1 then
+                transactionFailure = 'revision_failed'
+                return false
+            end
+            return true
+        end)
+    end)
+    if not callOk or success ~= true then
+        return { success = false, message = transactionFailure }
+    end
     return { success = true }
 end)
 
@@ -1150,7 +1222,7 @@ ps.registerCallback(resourceName .. ':server:getMyProfile', function(source)
     local activeBolos = {}
     if civConfig.showBolos ~= false then
         local bOk, bResult = pcall(MySQL.query.await,
-            'SELECT id, reportId, type, notes FROM mdt_bolos WHERE status = ? AND subject_id = ? ORDER BY id DESC',
+            'SELECT id, reportId, type, notes FROM mdt_bolos WHERE status = ? AND lifecycle_status <> \'voided\' AND subject_id = ? ORDER BY id DESC',
             { 'active', citizenid })
         activeBolos = bOk and bResult or {}
     end

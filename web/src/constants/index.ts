@@ -210,7 +210,7 @@ export const DEFAULT_DATE = "Loading...";
 export const APP_INFO = {
 	leo: {
 		version: "CGN LEO MDT v1.0",
-		title: "Capital Region Law Enforcement",
+		title: "LEO MDT",
 		subtitle: "Mobile Data Terminal",
 		footerSubtext: "Authorized Personnel Only",
 		icon: "local_police",

@@ -6,6 +6,7 @@
 	import type { createTabService } from "../services/tabService.svelte";
 	import type { MDTTab } from "../constants";
 	import Pagination from "../components/Pagination.svelte";
+	import RecordGovernance from "../components/RecordGovernance.svelte";
 
 	let { tabService }: { tabService?: ReturnType<typeof createTabService> } = $props();
 
@@ -636,6 +637,21 @@
 		<!-- Detail Sidebar (right) -->
 		<div class="detail-sidebar">
 			{#if selectedEvidenceId}
+				<div class="governance-section">
+					<RecordGovernance
+						recordType="evidence"
+						recordId={selectedEvidenceId}
+						owningAgency={selectedEvidence?.owning_agency}
+						taskForceId={selectedEvidence?.task_force_id}
+						lifecycleStatus={selectedEvidence?.lifecycle_status || "active"}
+						onChanged={async () => {
+							const currentId = selectedEvidenceId;
+							await loadEvidence(page);
+							const refreshed = items.find((item) => item.id === currentId);
+							if (refreshed) await selectEvidence(refreshed);
+						}}
+					/>
+				</div>
 				<!-- Link Evidence + Custody -->
 				<div class="section">
 					<div class="section-title">Link Evidence</div>
@@ -1016,6 +1032,7 @@
 
 	/* ── Detail Sidebar ── */
 	.detail-sidebar { display: flex; flex-direction: column; gap: 0; overflow-y: auto; }
+	.governance-section { padding: 10px; border-bottom: 1px solid rgba(255, 255, 255, 0.04); }
 
 	.section {
 		background: transparent;

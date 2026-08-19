@@ -89,6 +89,39 @@
 		isBoss: boolean;
 	}
 
+	interface TaskForceMember {
+		taskForceId: string;
+		citizenid: string;
+		agency: string;
+		grade: number;
+		badge: string;
+		callsign: string;
+		role: string;
+		status: string;
+		startsAt?: string;
+		expiresAt?: string;
+		reason?: string;
+	}
+
+	interface TaskForce {
+		id: string;
+		name: string;
+		appointingAgency: string;
+		status: string;
+		startsAt?: string;
+		expiresAt?: string;
+		reason?: string;
+		scope: {
+			agencies?: string[];
+			permissions?: string[];
+			recordTypes?: string[];
+			caseIds?: number[];
+			reportIds?: number[];
+			incidentIds?: string[];
+		};
+		members: TaskForceMember[];
+	}
+
 	let officers = $state<Officer[]>([]);
 	let activeUnits = $state<ActiveUnit[]>([]);
 	let isLoading = $state(false);
@@ -139,10 +172,41 @@
 	let hireBadge = $state("");
 	let hireCallsign = $state("");
 	let hireReason = $state("");
+	let showTaskForceModal = $state(false);
+	let taskForceCreating = $state(false);
+	let taskForces = $state<TaskForce[]>([]);
+	let selectedTaskForceId = $state("");
+	let taskForceLoading = $state(false);
+	let taskForceSaving = $state(false);
+	let taskForceName = $state("");
+	let taskForceExpiresAt = $state("");
+	let taskForceReason = $state("");
+	let taskForceAgencies = $state<string[]>(["brpd", "ebrso"]);
+	let taskForcePermissions = $state<string[]>(["records.view", "records.supplement", "evidence.view", "dispatch.view"]);
+	let taskForceRecordTypes = $state<string[]>(["cases", "reports"]);
+	let taskForceCaseIds = $state("");
+	let taskForceReportIds = $state("");
+	let taskForceIncidentIds = $state("");
+	let taskForceMemberCitizenId = $state("");
+	let taskForceMemberRole = $state("member");
+	let taskForceMemberStatus = $state("active");
+	let taskForceMemberExpiresAt = $state("");
+	let taskForceMemberReason = $state("");
+	let taskForceStatus = $state("suspended");
+	let taskForceStatusReason = $state("");
+
+	const taskForcePermissionOptions = [
+		"records.view", "records.create", "records.supplement", "records.review", "records.lifecycle",
+		"evidence.view", "evidence.custody", "evidence.transfer", "evidence.submit", "evidence.release",
+		"dispatch.view", "dispatch.assign_other",
+	];
 
 	let canManageCerts = $derived(authService?.hasPermission("roster_manage_certifications") ?? false);
 	let canManageOfficers = $derived(authService?.hasPermission("roster_manage_officers") ?? false);
+	let canViewTaskForces = $derived(authService?.hasPermission("taskforces_view") ?? false);
+	let canManageTaskForces = $derived(authService?.hasPermission("taskforces_manage") ?? false);
 	let canOpenPanel = $derived(canManageCerts || canManageOfficers);
+	let selectedTaskForce = $derived(taskForces.find((taskForce) => taskForce.id === selectedTaskForceId) || null);
 
 	// Phase 2: EMS-aware terminology. The roster is shared UI but the wording
 	// should match the caller's domain (police "Officer" vs EMS "Personnel").
@@ -794,6 +858,112 @@
 		finally { isSavingBoss = false; }
 	}
 
+	function toggleTaskForceValue(values: string[], value: string): string[] {
+		return values.includes(value) ? values.filter((entry) => entry !== value) : [...values, value];
+	}
+
+	function parseTaskForceNumbers(value: string): number[] {
+		return [...new Set(value.split(",").map((entry) => Number(entry.trim())).filter((entry) => Number.isInteger(entry) && entry > 0))];
+	}
+
+	function parseTaskForceStrings(value: string): string[] {
+		return [...new Set(value.split(",").map((entry) => entry.trim()).filter(Boolean))];
+	}
+
+	async function loadTaskForces() {
+		taskForceLoading = true;
+		try {
+			const response = await fetchNui<{ success: boolean; taskForces?: TaskForce[]; message?: string }>("getTaskForces", {});
+			taskForces = response?.success && Array.isArray(response.taskForces) ? response.taskForces : [];
+			if (!response?.success && response?.message) globalNotifications.error(response.message);
+			if (!taskForces.some((taskForce) => taskForce.id === selectedTaskForceId)) {
+				selectedTaskForceId = taskForces[0]?.id || "";
+			}
+		} catch {
+			taskForces = [];
+			globalNotifications.error("Failed to load task forces");
+		} finally {
+			taskForceLoading = false;
+		}
+	}
+
+	async function openTaskForces() {
+		showTaskForceModal = true;
+		taskForceCreating = false;
+		await loadTaskForces();
+	}
+
+	async function createTaskForce() {
+		if (!canManageTaskForces || taskForceName.trim().length < 3 || taskForceReason.trim().length < 3 ||
+			!taskForceExpiresAt || taskForceAgencies.length < 2 || taskForcePermissions.length === 0 ||
+			(taskForceRecordTypes.length === 0 && !taskForceCaseIds.trim() && !taskForceReportIds.trim() && !taskForceIncidentIds.trim())) return;
+		taskForceSaving = true;
+		try {
+			const response = await fetchNui<{ success: boolean; message?: string; taskForce?: { id?: string } }>("createTaskForce", {
+				name: taskForceName.trim(),
+				expiresAt: databaseDate(taskForceExpiresAt),
+				reason: taskForceReason.trim(),
+				scope: {
+					agencies: taskForceAgencies,
+					permissions: taskForcePermissions,
+					recordTypes: taskForceRecordTypes,
+					caseIds: parseTaskForceNumbers(taskForceCaseIds),
+					reportIds: parseTaskForceNumbers(taskForceReportIds),
+					incidentIds: parseTaskForceStrings(taskForceIncidentIds),
+				},
+			});
+			if (response?.success) {
+				globalNotifications.success(response.message || "Task force created");
+				taskForceName = ""; taskForceReason = ""; taskForceExpiresAt = "";
+				taskForceCaseIds = ""; taskForceReportIds = ""; taskForceIncidentIds = "";
+				await loadTaskForces();
+				if (response.taskForce?.id) selectedTaskForceId = response.taskForce.id;
+				taskForceCreating = false;
+			} else globalNotifications.error(response?.message || "Failed to create task force");
+		} catch { globalNotifications.error("Failed to create task force"); }
+		finally { taskForceSaving = false; }
+	}
+
+	async function saveTaskForceMember() {
+		if (!selectedTaskForce || !taskForceMemberCitizenId || taskForceMemberReason.trim().length < 3 ||
+			((taskForceMemberStatus === "active" || taskForceMemberStatus === "suspended") && !taskForceMemberExpiresAt)) return;
+		taskForceSaving = true;
+		try {
+			const response = await fetchNui<{ success: boolean; message?: string }>("setTaskForceMember", {
+				taskForceId: selectedTaskForce.id,
+				citizenid: taskForceMemberCitizenId,
+				role: taskForceMemberRole,
+				status: taskForceMemberStatus,
+				expiresAt: databaseDate(taskForceMemberExpiresAt),
+				reason: taskForceMemberReason.trim(),
+			});
+			if (response?.success) {
+				globalNotifications.success(response.message || "Task force membership updated");
+				taskForceMemberReason = "";
+				await loadTaskForces();
+			} else globalNotifications.error(response?.message || "Failed to update task force member");
+		} catch { globalNotifications.error("Failed to update task force member"); }
+		finally { taskForceSaving = false; }
+	}
+
+	async function saveTaskForceStatus() {
+		if (!selectedTaskForce || taskForceStatusReason.trim().length < 3) return;
+		taskForceSaving = true;
+		try {
+			const response = await fetchNui<{ success: boolean; message?: string }>("setTaskForceStatus", {
+				taskForceId: selectedTaskForce.id,
+				status: taskForceStatus,
+				reason: taskForceStatusReason.trim(),
+			});
+			if (response?.success) {
+				globalNotifications.success(response.message || "Task force status updated");
+				taskForceStatusReason = "";
+				await loadTaskForces();
+			} else globalNotifications.error(response?.message || "Failed to update task force status");
+		} catch { globalNotifications.error("Failed to update task force status"); }
+		finally { taskForceSaving = false; }
+	}
+
 	function getTagColor(certName: string): string {
 		const tag = availableTags.find((t) => t.name === certName);
 		return tag?.color || "#6b7280";
@@ -815,6 +985,9 @@
 			<span class="result-count">{filteredOfficers.length} {term.memberLower}{filteredOfficers.length !== 1 ? "s" : ""}</span>
 			{#if canManageOfficers && !isEmsDomain}
 				<button class="btn-save" onclick={() => showHireModal = true}>Hire Officer</button>
+			{/if}
+			{#if canViewTaskForces && !isEmsDomain}
+				<button class="btn-secondary" onclick={openTaskForces}>Task Forces</button>
 			{/if}
 			<button class="btn-secondary" onclick={refreshData} disabled={isLoading}>
 				{isLoading ? "Loading..." : "Refresh"}
@@ -1400,6 +1573,143 @@
 	</div>
 {/if}
 
+{#if showTaskForceModal}
+	<div class="modal-overlay" onclick={() => showTaskForceModal = false} role="presentation">
+		<div class="modal-container taskforce-modal" onclick={(event) => event.stopPropagation()} role="dialog" aria-modal="true" aria-label="Task Force Management">
+			<div class="modal-header">
+				<div class="modal-title-area">
+					<span class="modal-title">Task Force Management</span>
+					<span class="modal-subtitle">Time-limited, written cross-agency authority for BRPD, EBRSO and LSP.</span>
+				</div>
+				<div class="taskforce-header-actions">
+					<button class="btn-secondary" onclick={loadTaskForces} disabled={taskForceLoading}>{taskForceLoading ? "Loading..." : "Refresh"}</button>
+					{#if canManageTaskForces}<button class="btn-save" onclick={() => { taskForceCreating = true; selectedTaskForceId = ""; }}>New Task Force</button>{/if}
+					<button class="modal-close" onclick={() => showTaskForceModal = false} aria-label="Close"><span class="material-icons">close</span></button>
+				</div>
+			</div>
+
+			<div class="modal-body taskforce-layout">
+				<div class="taskforce-list">
+					{#if taskForces.length === 0}
+						<div class="no-tags"><span class="material-icons no-tags-icon">groups</span><p>No task forces are visible.</p></div>
+					{:else}
+						{#each taskForces as taskForce (taskForce.id)}
+							<button class="taskforce-card" class:selected={taskForce.id === selectedTaskForceId} onclick={() => { selectedTaskForceId = taskForce.id; taskForceCreating = false; }}>
+								<span class="taskforce-card-name">{taskForce.name}</span>
+								<span class="taskforce-card-meta">{taskForce.appointingAgency.toUpperCase()}, {taskForce.status}</span>
+								<span class="taskforce-card-meta">Expires {formatDate(taskForce.expiresAt || "", "")}</span>
+							</button>
+						{/each}
+					{/if}
+				</div>
+
+				<div class="taskforce-detail">
+					{#if taskForceCreating}
+						<div class="taskforce-section">
+							<h3>Create Task Force</h3>
+							<label class="boss-label" for="taskforce-name">Name</label>
+							<input id="taskforce-name" class="callsign-input" bind:value={taskForceName} maxlength="100" placeholder="Task force name" />
+							<label class="boss-label" for="taskforce-expiry">Expiration</label>
+							<input id="taskforce-expiry" class="callsign-input" type="datetime-local" bind:value={taskForceExpiresAt} />
+							<label class="boss-label" for="taskforce-reason">Written Reason</label>
+							<textarea id="taskforce-reason" class="callsign-input taskforce-textarea" bind:value={taskForceReason} maxlength="500" placeholder="Operational purpose and approving authority"></textarea>
+						</div>
+
+						<div class="taskforce-section">
+							<h3>Participating Agencies</h3>
+							<div class="taskforce-options">
+								{#each [["brpd", "BRPD"], ["ebrso", "EBRSO"], ["lsp", "LSP"]] as agency}
+									<label class="fire-delete-toggle"><input type="checkbox" checked={taskForceAgencies.includes(agency[0])} onchange={() => taskForceAgencies = toggleTaskForceValue(taskForceAgencies, agency[0])} /><span>{agency[1]}</span></label>
+								{/each}
+							</div>
+							<p class="boss-hint">At least two agencies are required.</p>
+						</div>
+
+						<div class="taskforce-section">
+							<h3>Authorized Actions</h3>
+							<div class="taskforce-options taskforce-permissions">
+								{#each taskForcePermissionOptions as permission}
+									<label class="fire-delete-toggle"><input type="checkbox" checked={taskForcePermissions.includes(permission)} onchange={() => taskForcePermissions = toggleTaskForceValue(taskForcePermissions, permission)} /><span>{permission}</span></label>
+								{/each}
+							</div>
+						</div>
+
+						<div class="taskforce-section">
+							<h3>Record Scope</h3>
+							<div class="taskforce-options">
+								{#each ["cases", "reports", "incidents"] as recordType}
+									<label class="fire-delete-toggle"><input type="checkbox" checked={taskForceRecordTypes.includes(recordType)} onchange={() => taskForceRecordTypes = toggleTaskForceValue(taskForceRecordTypes, recordType)} /><span>{recordType}</span></label>
+								{/each}
+							</div>
+							<div class="taskforce-id-grid">
+								<input class="callsign-input" bind:value={taskForceCaseIds} placeholder="Specific case IDs, comma separated" />
+								<input class="callsign-input" bind:value={taskForceReportIds} placeholder="Specific report IDs, comma separated" />
+								<input class="callsign-input" bind:value={taskForceIncidentIds} placeholder="Specific incident IDs, comma separated" />
+							</div>
+						</div>
+
+						<div class="taskforce-actions">
+							<button class="btn-cancel" onclick={() => taskForceCreating = false}>Cancel</button>
+							<button class="btn-save" onclick={createTaskForce} disabled={taskForceSaving || taskForceName.trim().length < 3 || taskForceReason.trim().length < 3 || !taskForceExpiresAt || taskForceAgencies.length < 2 || taskForcePermissions.length === 0}>{taskForceSaving ? "Creating..." : "Create Task Force"}</button>
+						</div>
+					{:else if selectedTaskForce}
+						<div class="taskforce-summary">
+							<div><h3>{selectedTaskForce.name}</h3><p>{selectedTaskForce.reason}</p></div>
+							<span class="status-pill {selectedTaskForce.status === 'active' ? 'on-duty' : 'off-duty'}">{selectedTaskForce.status}</span>
+						</div>
+						<div class="taskforce-scope-summary">
+							<span><strong>Agencies:</strong> {(selectedTaskForce.scope.agencies || []).map((agency) => agency.toUpperCase()).join(", ")}</span>
+							<span><strong>Expires:</strong> {formatDate(selectedTaskForce.expiresAt || "", "")}</span>
+							<span><strong>Records:</strong> {(selectedTaskForce.scope.recordTypes || []).join(", ") || "Specific records only"}</span>
+							<span><strong>Permissions:</strong> {(selectedTaskForce.scope.permissions || []).join(", ")}</span>
+						</div>
+
+						<div class="taskforce-section">
+							<h3>Members</h3>
+							<div class="taskforce-members">
+								{#each selectedTaskForce.members || [] as member (member.citizenid + member.startsAt)}
+									<div class="taskforce-member"><span>{member.callsign}, {member.citizenid}</span><span>{member.agency.toUpperCase()}, {member.role}, {member.status}</span></div>
+								{/each}
+							</div>
+						</div>
+
+						{#if canManageTaskForces}
+							<div class="taskforce-section">
+								<h3>Appoint or Change Member</h3>
+								<div class="taskforce-form-grid">
+									<select class="callsign-input" bind:value={taskForceMemberCitizenId}>
+										<option value="">Select officer</option>
+										{#each officers.filter((officer) => officer.citizenid && (selectedTaskForce?.scope.agencies || []).includes(officer.department || "")) as officer (officer.citizenid)}
+											<option value={officer.citizenid}>{officer.callsign}, {officer.firstName} {officer.lastName}, {(officer.department || "").toUpperCase()}</option>
+										{/each}
+									</select>
+									<select class="callsign-input" bind:value={taskForceMemberRole}><option value="commander">Commander</option><option value="supervisor">Supervisor</option><option value="member">Member</option><option value="analyst">Analyst</option></select>
+									<select class="callsign-input" bind:value={taskForceMemberStatus}><option value="active">Active</option><option value="suspended">Suspended</option><option value="revoked">Revoke</option></select>
+									<input class="callsign-input" type="datetime-local" bind:value={taskForceMemberExpiresAt} disabled={taskForceMemberStatus === "revoked"} />
+								</div>
+								<label class="boss-label" for="taskforce-member-reason">Written Reason</label>
+								<input id="taskforce-member-reason" class="callsign-input" bind:value={taskForceMemberReason} maxlength="500" placeholder="Appointment, suspension or removal reason" />
+								<button class="btn-save" onclick={saveTaskForceMember} disabled={taskForceSaving || !taskForceMemberCitizenId || taskForceMemberReason.trim().length < 3 || ((taskForceMemberStatus === "active" || taskForceMemberStatus === "suspended") && !taskForceMemberExpiresAt)}>Save Membership</button>
+							</div>
+
+							<div class="taskforce-section">
+								<h3>Task Force Status</h3>
+								<div class="taskforce-form-grid status-grid">
+									<select class="callsign-input" bind:value={taskForceStatus}><option value="active">Active</option><option value="suspended">Suspended</option><option value="closed">Closed</option><option value="expired">Expired</option></select>
+									<input class="callsign-input" bind:value={taskForceStatusReason} maxlength="500" placeholder="Written Reason" />
+									<button class="btn-save" onclick={saveTaskForceStatus} disabled={taskForceSaving || taskForceStatusReason.trim().length < 3}>Update Status</button>
+								</div>
+							</div>
+						{/if}
+					{:else}
+						<div class="no-tags"><span class="material-icons no-tags-icon">policy</span><p>Select a task force to review its scope and membership.</p></div>
+					{/if}
+				</div>
+			</div>
+		</div>
+	</div>
+{/if}
+
 <style>
 	.roster-page {
 		display: flex;
@@ -1788,6 +2098,29 @@
 		flex-direction: column;
 		box-shadow: 0 20px 60px rgba(0, 0, 0, 0.5);
 	}
+
+	.taskforce-modal { width: min(980px, 92vw); max-height: 88vh; }
+	.taskforce-header-actions { display: flex; align-items: center; gap: 8px; }
+	.taskforce-layout { display: grid; grid-template-columns: 240px 1fr; padding: 0; min-height: 620px; }
+	.taskforce-list { border-right: 1px solid rgba(255, 255, 255, 0.06); overflow-y: auto; padding: 8px; }
+	.taskforce-card { width: 100%; display: flex; flex-direction: column; gap: 3px; text-align: left; background: transparent; color: inherit; border: 1px solid transparent; border-radius: 5px; padding: 10px; cursor: pointer; margin-bottom: 6px; }
+	.taskforce-card:hover, .taskforce-card.selected { background: rgba(var(--accent-rgb), 0.08); border-color: rgba(var(--accent-rgb), 0.18); }
+	.taskforce-card-name { font-size: 11px; font-weight: 650; }
+	.taskforce-card-meta { font-size: 9px; color: rgba(255, 255, 255, 0.35); text-transform: uppercase; letter-spacing: 0.35px; }
+	.taskforce-detail { overflow-y: auto; padding: 16px; }
+	.taskforce-section { display: flex; flex-direction: column; gap: 8px; padding: 0 0 16px; margin-bottom: 16px; border-bottom: 1px solid rgba(255, 255, 255, 0.06); }
+	.taskforce-section h3, .taskforce-summary h3 { margin: 0; font-size: 12px; color: rgba(255, 255, 255, 0.82); }
+	.taskforce-textarea { min-height: 68px; resize: vertical; }
+	.taskforce-options { display: flex; gap: 12px; flex-wrap: wrap; }
+	.taskforce-permissions { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 7px 12px; }
+	.taskforce-id-grid, .taskforce-form-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
+	.taskforce-actions { display: flex; justify-content: flex-end; gap: 8px; }
+	.taskforce-summary { display: flex; justify-content: space-between; gap: 16px; align-items: flex-start; margin-bottom: 12px; }
+	.taskforce-summary p { margin: 4px 0 0; font-size: 10px; color: rgba(255, 255, 255, 0.4); }
+	.taskforce-scope-summary { display: grid; gap: 6px; background: rgba(255, 255, 255, 0.025); border: 1px solid rgba(255, 255, 255, 0.05); border-radius: 5px; padding: 10px; margin-bottom: 16px; font-size: 10px; color: rgba(255, 255, 255, 0.48); overflow-wrap: anywhere; }
+	.taskforce-members { display: grid; gap: 5px; max-height: 150px; overflow-y: auto; }
+	.taskforce-member { display: flex; justify-content: space-between; gap: 12px; padding: 7px 9px; background: rgba(255, 255, 255, 0.025); border-radius: 4px; font-size: 10px; color: rgba(255, 255, 255, 0.55); }
+	.status-grid { grid-template-columns: 160px 1fr auto; }
 
 	.modal-header {
 		display: flex;

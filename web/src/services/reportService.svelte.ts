@@ -246,6 +246,10 @@ export function createReportService() {
 					return Array.isArray(v) ? v : [];
 				} catch { return []; }
 			})(),
+			owningAgency: raw?.owningAgency ?? raw?.owning_agency ?? undefined,
+			taskForceId: raw?.taskForceId ?? raw?.task_force_id ?? null,
+			lifecycleStatus: raw?.lifecycleStatus ?? raw?.lifecycle_status ?? "submitted",
+			version: Number(raw?.version ?? 1),
 		};
 	}
 
@@ -382,6 +386,8 @@ export function createReportService() {
 			charges: [],
 			restrictions: [],
 			vehicles: [],
+			lifecycleStatus: "draft",
+			version: 1,
 		};
 	}
 

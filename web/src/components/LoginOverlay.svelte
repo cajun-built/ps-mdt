@@ -1,6 +1,7 @@
 <script lang="ts">
 	import { APP_INFO } from "../constants";
 	import type { AuthService } from "../services/authService.svelte";
+	import { resolveDepartmentBrand } from "../utils/departmentBranding";
 
 	interface Props {
 		authService: AuthService;
@@ -8,15 +9,25 @@
 
 	let { authService }: Props = $props();
 
-	let info = $derived(APP_INFO[authService.jobType] || APP_INFO.leo);
+	let info = $derived(APP_INFO[authService.jobType === "civilian" ? "leo" : authService.jobType]);
+	let departmentBrand = $derived(resolveDepartmentBrand(
+		authService.playerData?.job?.name,
+		authService.playerData?.job?.label,
+		authService.jobType,
+	));
+	let terminalTitle = $derived(authService.jobType === "leo" ? departmentBrand.shortName : info.title);
+	let terminalSubtitle = $derived(authService.jobType === "leo" ? departmentBrand.name : info.subtitle);
 </script>
 
 <div class="login-overlay">
 	<div class="login-card">
 		<div class="login-header">
 			<span class="material-icons badge-icon">{info.icon}</span>
-			<h2 class="dept-name">{info.title}</h2>
-			<span class="dept-subtitle">{info.subtitle}</span>
+			<h2 class="dept-name">{terminalTitle}</h2>
+			<span class="dept-subtitle">{terminalSubtitle}</span>
+			{#if authService.jobType === "leo"}
+				<span class="terminal-type">Mobile Data Terminal</span>
+			{/if}
 		</div>
 
 		{#if authService.isCheckingAuth}
@@ -125,10 +136,20 @@
 	}
 
 	.dept-subtitle {
+		display: block;
 		color: rgba(255, 255, 255, 0.4);
 		font-size: 13px;
 		font-weight: 400;
 		letter-spacing: 0.5px;
+	}
+
+	.terminal-type {
+		display: block;
+		margin-top: 5px;
+		color: rgba(255, 255, 255, 0.28);
+		font-size: 11px;
+		letter-spacing: 0.7px;
+		text-transform: uppercase;
 	}
 
 	/* Body */

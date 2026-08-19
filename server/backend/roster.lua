@@ -680,3 +680,57 @@ ps.registerCallback('ps-mdt:server:restrictOfficerPermission', function(source, 
         payload.active == true, payload.expiresAt, payload.reason, actionId(source, 'restriction', payload))
     return coreResult(ok, result, 'Permission restriction updated')
 end)
+
+ps.registerCallback('ps-mdt:server:getTaskForces', function(source)
+    if not CheckAuth(source) or not isLeoSource(source) then
+        return { success = false, taskForces = {}, message = 'Unauthorized' }
+    end
+    if not CheckPermission(source, 'taskforces_view') then
+        return { success = false, taskForces = {}, message = 'No permission to view task forces' }
+    end
+    local ok, taskForces, reason = pcall(function()
+        return exports.cgn_leo_core:ListTaskForces(source)
+    end)
+    if not ok or taskForces == nil then
+        return { success = false, taskForces = {}, message = tostring(ok and reason or taskForces) }
+    end
+    return { success = true, taskForces = taskForces }
+end)
+
+ps.registerCallback('ps-mdt:server:createTaskForce', function(source, payload)
+    if not CheckAuth(source) or not isLeoSource(source) or not CheckPermission(source, 'taskforces_manage') then
+        return { success = false, message = 'Unauthorized' }
+    end
+    payload = type(payload) == 'table' and payload or {}
+    local ok, result = exports.cgn_leo_core:CreateTaskForce(source, {
+        name = payload.name,
+        expiresAt = payload.expiresAt,
+        reason = payload.reason,
+        scope = payload.scope,
+    }, actionId(source, 'taskforce_create', payload))
+    if not ok then return { success = false, message = tostring(result or 'Action denied') } end
+    return { success = true, message = 'Task force created', taskForce = result }
+end)
+
+ps.registerCallback('ps-mdt:server:setTaskForceMember', function(source, payload)
+    if not CheckAuth(source) or not isLeoSource(source) or not CheckPermission(source, 'taskforces_manage') then
+        return { success = false, message = 'Unauthorized' }
+    end
+    payload = type(payload) == 'table' and payload or {}
+    local ok, result = exports.cgn_leo_core:SetTaskForceMember(source, payload.taskForceId,
+        payload.citizenid, payload.role, payload.status, payload.expiresAt, payload.reason,
+        actionId(source, 'taskforce_member', payload))
+    if not ok then return { success = false, message = tostring(result or 'Action denied') } end
+    return { success = true, message = 'Task force membership updated', membership = result }
+end)
+
+ps.registerCallback('ps-mdt:server:setTaskForceStatus', function(source, payload)
+    if not CheckAuth(source) or not isLeoSource(source) or not CheckPermission(source, 'taskforces_manage') then
+        return { success = false, message = 'Unauthorized' }
+    end
+    payload = type(payload) == 'table' and payload or {}
+    local ok, result = exports.cgn_leo_core:SetTaskForceStatus(source, payload.taskForceId,
+        payload.status, payload.reason, actionId(source, 'taskforce_status', payload))
+    if not ok then return { success = false, message = tostring(result or 'Action denied') } end
+    return { success = true, message = 'Task force status updated', taskForce = result }
+end)
