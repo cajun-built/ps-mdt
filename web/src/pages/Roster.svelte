@@ -42,6 +42,7 @@
 	import { isEnvBrowser } from "../utils/misc";
 	import { NUI_EVENTS } from "../constants/nuiEvents";
 	import { globalNotifications } from "../services/notificationService.svelte";
+	import { getPromotionActionState, personnelActionMessage } from "../utils/rosterManagement";
 	import type { AuthService } from "../services/authService.svelte";
 	import ActivityTimeline from "../components/ActivityTimeline.svelte";
 
@@ -139,6 +140,7 @@
 
 	// Boss panel state
 	let showBossPanel = $state(false);
+	let isBossPanelLoading = $state(false);
 	let bossPanelTab = $state<"rank" | "callsign" | "access" | "certs" | "ppr" | "fto" | "ia_history" | "activity">("rank");
 	let iaHistory = $state<Array<{ id: number; complaint_number: string; category: string; status: string; created_at: string }>>([]);
 	let iaHistoryLoading = $state(false);
@@ -207,6 +209,10 @@
 	let canViewTaskForces = $derived(authService?.hasPermission("taskforces_view") ?? false);
 	let canManageTaskForces = $derived(authService?.hasPermission("taskforces_manage") ?? false);
 	let canOpenPanel = $derived(canManageCerts || canManageOfficers);
+	let selectedGradeName = $derived(jobGrades.find((grade) => grade.grade === selectedGrade)?.name);
+	let promotionAction = $derived(
+		getPromotionActionState(selectedGrade, actionReason, selectedGradeName, isSavingBoss, isBossPanelLoading),
+	);
 	let selectedTaskForce = $derived(taskForces.find((taskForce) => taskForce.id === selectedTaskForceId) || null);
 
 	// Phase 2: EMS-aware terminology. The roster is shared UI but the wording
@@ -483,18 +489,23 @@
 		showFireConfirm = false;
 
 		if (canManageOfficers) {
-			// Open boss panel with all tabs
+			// Open boss panel immediately for instant responsiveness
 			bossPanelTab = "rank";
-			await Promise.all([
-				loadOfficerTags(),
-				loadJobGrades(officer.department || "police"),
-				loadTransferGrades(transferAgency),
-			]);
 			showBossPanel = true;
+			isBossPanelLoading = true;
+			try {
+				await Promise.all([
+					loadOfficerTags(),
+					loadJobGrades(officer.department || "police"),
+					loadTransferGrades(transferAgency),
+				]);
+			} finally {
+				isBossPanelLoading = false;
+			}
 		} else {
 			// Fall back to cert-only modal
-			await loadOfficerTags();
 			showCertModal = true;
+			await loadOfficerTags();
 		}
 	}
 
@@ -580,12 +591,14 @@
 				if (idx !== -1) {
 					officers[idx].rank = gradeName;
 				}
+				selectedOfficer.rank = gradeName;
+				selectedGrade = null;
 				globalNotifications.success(response.message || `Rank updated to ${gradeName}`);
 			} else {
-				globalNotifications.error(response?.message || "Failed to update rank");
+				globalNotifications.error(personnelActionMessage(response?.message));
 			}
 		} catch {
-			globalNotifications.error("Failed to update rank");
+			globalNotifications.error(personnelActionMessage("service_unavailable"));
 		} finally {
 			isSavingBoss = false;
 		}
@@ -1206,20 +1219,28 @@
 			<div class="boss-body">
 				{#if bossPanelTab === "rank" || bossPanelTab === "callsign" || bossPanelTab === "access" || bossPanelTab === "certs"}
 					<div class="boss-section">
-						<label class="boss-label">Written Reason</label>
+						<label class="boss-label">{bossPanelTab === "rank" ? "Step 1. Written Reason" : "Written Reason"}</label>
 						<input class="callsign-input" bind:value={actionReason} maxlength="500" placeholder="Required reason for this personnel action" />
+						{#if bossPanelTab === "rank"}
+							<p class="boss-hint">A reason is required for the permanent personnel record.</p>
+						{/if}
 					</div>
 				{/if}
 				{#if bossPanelTab === "rank"}
 					<div class="boss-section">
-						<label class="boss-label">Change Rank</label>
-						<p class="boss-hint">Select a new rank for this {term.memberLower}. {term.member} must be online.</p>
-						<div class="grade-grid">
-							{#if jobGrades.length === 0}
-								<div class="no-tags">
-									<p>No grades available for this department.</p>
-								</div>
-							{:else}
+						<label class="boss-label">Step 2. Select New Rank</label>
+						<p class="boss-hint">Current rank: <strong>{selectedOfficer.rank}</strong>. You may only select a rank below your own.</p>
+						{#if isBossPanelLoading && jobGrades.length === 0}
+							<div class="no-tags">
+								<div class="loading-spinner"></div>
+								<p>Loading agency ranks...</p>
+							</div>
+						{:else if jobGrades.length === 0}
+							<div class="no-tags">
+								<p>No ranks could be loaded for {selectedOfficer.departmentLabel || selectedOfficer.department || "this agency"}.</p>
+							</div>
+						{:else}
+							<div class="grade-grid">
 								{#each jobGrades as grade (grade.grade)}
 									<button
 										class="grade-option"
@@ -1234,12 +1255,20 @@
 											<span class="grade-current">Current</span>
 										{/if}
 										{#if grade.isBoss}
-											<span class="grade-boss-badge">Boss</span>
+											<span class="grade-boss-badge">Head</span>
 										{/if}
 									</button>
 								{/each}
-							{/if}
-						</div>
+							</div>
+							<div class="grade-action-row" style="margin-top: 10px; display: flex; justify-content: flex-end;">
+								<div style="flex: 1; align-self: center;">
+									<p class="boss-hint" style="margin: 0;">{promotionAction.hint}</p>
+								</div>
+								<button class="btn-save" onclick={promoteOfficer} disabled={promotionAction.disabled}>
+									{promotionAction.label}
+								</button>
+							</div>
+						{/if}
 					</div>
 
 					<div class="boss-divider"></div>
@@ -1301,8 +1330,9 @@
 								class="callsign-input"
 								bind:value={editCallsign}
 								placeholder="Enter callsign..."
-								maxlength="10"
+								maxlength="16"
 							/>
+							<button class="btn-save" onclick={saveCallsign} disabled={isSavingBoss || editCallsign.trim().length === 0 || actionReason.trim().length < 3}>Save Callsign</button>
 						</div>
 						<label class="boss-label">Permanent Badge Number</label>
 						<div class="callsign-input-row">
@@ -1312,13 +1342,28 @@
 						<label class="boss-label">Assignment</label>
 						<div class="callsign-input-row">
 							<select class="callsign-input" bind:value={editAssignment}>
-								<option value="academy">Academy</option><option value="field_training">Field Training</option>
-								<option value="patrol">Patrol</option><option value="investigations">Investigations</option>
-								<option value="traffic">Traffic</option><option value="administration">Administration</option>
-								<option value="internal_affairs">Internal Affairs</option><option value="personnel">Personnel</option>
-								<option value="recruitment">Recruitment</option><option value="training">Training</option>
-								<option value="dispatcher">Dispatcher</option><option value="incident_command">Incident Command</option>
+								<option value="academy">Academy</option>
+								<option value="field_training">Field Training</option>
+								<option value="patrol">Patrol</option>
+								<option value="investigations">Investigations</option>
+								<option value="traffic">Traffic</option>
+								<option value="administration">Administration</option>
+								<option value="internal_affairs">Internal Affairs</option>
+								<option value="personnel">Personnel</option>
+								<option value="recruitment">Recruitment</option>
+								<option value="training">Training</option>
+								<option value="dispatcher">Dispatcher</option>
+								<option value="fleet_manager">Fleet Manager</option>
+								<option value="incident_command">Incident Command</option>
 								<option value="evidence">Evidence</option>
+								<option value="field_training_officer">Field Training Officer</option>
+								<option value="k9_unit">K9 Unit</option>
+								<option value="tactical_unit">Tactical Unit (SWAT)</option>
+								<option value="aviation_unit">Aviation Unit (Air)</option>
+								<option value="interceptor_unit">Interceptor Unit</option>
+								<option value="marine_unit">Marine Unit</option>
+								<option value="public_information">Public Information</option>
+								<option value="honor_guard">Honor Guard</option>
 							</select>
 							<label class="fire-delete-toggle"><input type="checkbox" bind:checked={assignmentPrimary} /><span>Primary</span></label>
 							<label class="fire-delete-toggle"><input type="checkbox" bind:checked={assignmentActive} /><span>Active</span></label>
@@ -1523,23 +1568,7 @@
 
 			<div class="modal-footer">
 				<button class="btn-cancel" onclick={closeBossPanel}>Close</button>
-				{#if bossPanelTab === "rank" && selectedGrade !== null}
-					<button
-						class="btn-save"
-						onclick={promoteOfficer}
-							disabled={isSavingBoss || actionReason.trim().length < 3}
-					>
-						{isSavingBoss ? "Saving..." : "Update Rank"}
-					</button>
-				{:else if bossPanelTab === "callsign"}
-					<button
-						class="btn-save"
-						onclick={saveCallsign}
-						disabled={isSavingBoss || editCallsign.length === 0 || actionReason.trim().length < 3}
-					>
-						{isSavingBoss ? "Saving..." : "Save Callsign"}
-					</button>
-				{:else if bossPanelTab === "certs"}
+				{#if bossPanelTab === "certs"}
 					<button
 						class="btn-save"
 						onclick={saveCertifications}
@@ -2311,9 +2340,9 @@
 		background: var(--card-dark-bg);
 		border: 1px solid rgba(255, 255, 255, 0.08);
 		border-radius: 6px;
-		width: 600px;
-		max-width: 92vw;
-		max-height: 80vh;
+		width: 660px;
+		max-width: 94vw;
+		max-height: 85vh;
 		display: flex;
 		flex-direction: column;
 		box-shadow: 0 20px 60px rgba(0, 0, 0, 0.5);

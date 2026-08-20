@@ -399,10 +399,38 @@ end)
 ps.registerCallback('ps-mdt:server:getJobGrades', function(source, payload)
     local src = source
     if not CheckAuth(src) then return {} end
-    if not CheckPermission(src, 'roster_manage_officers') then return {} end
+    if not CheckPermission(src, 'roster_manage_officers') and not CheckPermission(src, 'roster_manage_certifications') and not CheckPermission(src, 'roster_hire_officers') then
+        return {}
+    end
 
     payload = payload or {}
     local jobName = payload.job or 'police'
+
+    if isLeoSource(src) and GetResourceState('cgn_leo_core') == 'started' then
+        local aliases = {
+            police = 'brpd',
+            lspd = 'brpd',
+            bcso = 'ebrso',
+            sasp = 'lsp',
+            sahp = 'lsp',
+        }
+        local agencyKey = aliases[jobName] or jobName
+        local ok, agencies = pcall(function() return exports.cgn_leo_core:GetAgencyDefinitions() end)
+        local agencyData = ok and agencies and agencies[agencyKey] or nil
+        if agencyData and agencyData.ranks then
+            local grades = {}
+            for gradeKey, rankInfo in pairs(agencyData.ranks) do
+                grades[#grades + 1] = {
+                    grade = tonumber(gradeKey) or 0,
+                    name = rankInfo.name or ('Grade ' .. gradeKey),
+                    band = rankInfo.band,
+                    isBoss = rankInfo.band == 'agency_head',
+                }
+            end
+            table.sort(grades, function(a, b) return a.grade < b.grade end)
+            return grades
+        end
+    end
 
     local jobData = ps.getSharedJob(jobName)
     if not jobData or not jobData.grades then return {} end
