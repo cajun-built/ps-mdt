@@ -6,6 +6,7 @@ import type {
 	FleetMutationResponse,
 } from "../interfaces/IFleet";
 import { fetchNui } from "../utils/fetchNui";
+import { fleetFailureLabel, normalizeFleetResponse } from "../utils/fleetResponse";
 import { isEnvBrowser } from "../utils/misc";
 
 const EMPTY_BOOTSTRAP: FleetBootstrap = {
@@ -54,18 +55,21 @@ export function createFleetService() {
 	}
 
 	function reasonLabel(reason?: string): string {
-		const labels: Record<string, string> = {
-			off_duty: "You must be on duty",
-			agency_scope_denied: "That vehicle belongs to another agency",
-			assignment_required: "The required unit assignment is missing",
-			certification_required: "The required certification is missing or expired",
-			duplicate_request: "That request was already processed",
-			commission_failed: "The fleet number or plate is already registered",
-			asset_checked_out: "Return or recover the vehicle before changing it",
-			status_transition_denied: "That status change is not allowed",
-			service_unavailable: "Fleet services are currently unavailable",
-		};
-		return labels[reason || ""] ?? (reason || "Fleet action failed").replaceAll("_", " ");
+		return fleetFailureLabel(reason);
+	}
+
+	function reportMalformedResponse(event: string, raw: unknown, reason?: string): void {
+		if (!reason || !["invalid_response", "missing_failure_reason", "missing_bootstrap_data"].includes(reason)) return;
+		const response = raw && typeof raw === "object" && !Array.isArray(raw)
+			? raw as Record<string, unknown>
+			: null;
+		console.warn("[ps-mdt] Fleet response rejected", {
+			event,
+			type: Array.isArray(raw) ? "array" : typeof raw,
+			success: response?.success,
+			reason: response?.reason,
+			keys: response ? Object.keys(response).sort() : [],
+		});
 	}
 
 	async function load(): Promise<boolean> {
@@ -76,11 +80,13 @@ export function createFleetService() {
 				bootstrap = mockBootstrap();
 				return true;
 			}
-			const result = await fetchNui<FleetMutationResponse<FleetBootstrap>>(
+			const raw = await fetchNui<unknown>(
 				NUI_EVENTS.FLEET.GET_BOOTSTRAP,
 				{},
 				{ success: false, reason: "service_unavailable" },
 			);
+			const result = normalizeFleetResponse<FleetBootstrap>(raw, true);
+			reportMalformedResponse(NUI_EVENTS.FLEET.GET_BOOTSTRAP, raw, result.reason);
 			if (!result.success || !result.data) {
 				error = reasonLabel(result.reason);
 				return false;
@@ -99,9 +105,12 @@ export function createFleetService() {
 		saving = true;
 		error = null;
 		try {
-			const result = await fetchNui<FleetMutationResponse<T>>(event as never, payload, {
+			const raw = await fetchNui<unknown>(event as never, payload, {
 				success: isEnvBrowser(),
+				reason: isEnvBrowser() ? undefined : "service_unavailable",
 			});
+			const result = normalizeFleetResponse<T>(raw);
+			reportMalformedResponse(event, raw, result.reason);
 			if (!result.success) error = reasonLabel(result.reason);
 			return result;
 		} catch {

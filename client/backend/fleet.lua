@@ -6,6 +6,37 @@ local fleetCallbacks = {
     renumberFleetVehicle = 'cgn_leo_fleet:server:renumber',
 }
 
+local function tableKeys(value)
+    if type(value) ~= 'table' then return '' end
+    local keys = {}
+    for key in pairs(value) do keys[#keys + 1] = tostring(key) end
+    table.sort(keys)
+    return table.concat(keys, ',')
+end
+
+local function validateResponse(callbackName, result)
+    local resultType = type(result)
+    local reason
+    if resultType ~= 'table' or type(result.success) ~= 'boolean' then
+        reason = 'invalid_response'
+    elseif result.success == false and (type(result.reason) ~= 'string' or result.reason == '') then
+        reason = 'missing_failure_reason'
+    elseif callbackName == 'getFleetBootstrap' and result.success == true and type(result.data) ~= 'table' then
+        reason = 'missing_bootstrap_data'
+    end
+
+    if not reason then return result end
+
+    print(('[ps-mdt] fleet response %s type=%s success=%s reason=%s keys=%s'):format(
+        callbackName,
+        resultType,
+        tostring(resultType == 'table' and result.success or nil),
+        tostring(resultType == 'table' and result.reason or nil),
+        tableKeys(result)
+    ))
+    return { success = false, reason = reason }
+end
+
 local function relay(callbackName, data, cb)
     if not MDTOpen then
         cb({ success = false, reason = 'mdt_closed' })
@@ -27,7 +58,7 @@ local function relay(callbackName, data, cb)
         return
     end
 
-    cb(result or { success = false, reason = 'service_unavailable' })
+    cb(validateResponse(callbackName, result))
 end
 
 RegisterNUICallback('getFleetBootstrap', function(data, cb)
