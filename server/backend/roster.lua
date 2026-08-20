@@ -395,57 +395,73 @@ ps.registerCallback('ps-mdt:server:updateOfficerCertifications', function(source
     return { success = true }
 end)
 
--- Get job grades for a specific department
+local function normalizeAgencyJobName(jobName)
+    local value = tostring(jobName or 'police'):lower()
+    value = value:gsub('^%s+', ''):gsub('%s+$', '')
+
+    local aliases = {
+        police = 'brpd',
+        lspd = 'brpd',
+        ['baton rouge police department'] = 'brpd',
+        bcso = 'ebrso',
+        ['east baton rouge sheriff office'] = 'ebrso',
+        ["east baton rouge sheriff's office"] = 'ebrso',
+        sasp = 'lsp',
+        sahp = 'lsp',
+        ['louisiana state police'] = 'lsp',
+    }
+
+    return aliases[value] or value
+end
+
+local function formatJobGrades(ranks)
+    local grades = {}
+    for gradeKey, rankInfo in pairs(ranks or {}) do
+        grades[#grades + 1] = {
+            grade = tonumber(gradeKey) or 0,
+            name = rankInfo.name or ('Grade ' .. tostring(gradeKey)),
+            band = rankInfo.band,
+            isBoss = rankInfo.band == 'agency_head'
+                or rankInfo.isboss == true
+                or rankInfo.isBoss == true
+                or rankInfo.boss == true,
+        }
+    end
+    table.sort(grades, function(a, b) return a.grade < b.grade end)
+    return grades
+end
+
+-- Get job grades for a specific department. Rank names are configuration data,
+-- so any authenticated MDT user may read them. Personnel actions still perform
+-- their own permission and rank checks on the server.
 ps.registerCallback('ps-mdt:server:getJobGrades', function(source, payload)
     local src = source
     if not CheckAuth(src) then return {} end
-    if not CheckPermission(src, 'roster_manage_officers') and not CheckPermission(src, 'roster_manage_certifications') and not CheckPermission(src, 'roster_hire_officers') then
-        return {}
-    end
 
     payload = payload or {}
-    local jobName = payload.job or 'police'
+    local agencyKey = normalizeAgencyJobName(payload.job)
 
     if isLeoSource(src) and GetResourceState('cgn_leo_core') == 'started' then
-        local aliases = {
-            police = 'brpd',
-            lspd = 'brpd',
-            bcso = 'ebrso',
-            sasp = 'lsp',
-            sahp = 'lsp',
-        }
-        local agencyKey = aliases[jobName] or jobName
         local ok, agencies = pcall(function() return exports.cgn_leo_core:GetAgencyDefinitions() end)
         local agencyData = ok and agencies and agencies[agencyKey] or nil
         if agencyData and agencyData.ranks then
-            local grades = {}
-            for gradeKey, rankInfo in pairs(agencyData.ranks) do
-                grades[#grades + 1] = {
-                    grade = tonumber(gradeKey) or 0,
-                    name = rankInfo.name or ('Grade ' .. gradeKey),
-                    band = rankInfo.band,
-                    isBoss = rankInfo.band == 'agency_head',
-                }
-            end
-            table.sort(grades, function(a, b) return a.grade < b.grade end)
-            return grades
+            return formatJobGrades(agencyData.ranks)
+        end
+        if not ok then
+            print(('[ps-mdt] Unable to read LEO agency ranks from cgn_leo_core for %s: %s'):format(
+                agencyKey, tostring(agencies)))
         end
     end
 
-    local jobData = ps.getSharedJob(jobName)
-    if not jobData or not jobData.grades then return {} end
-
-    local grades = {}
-    for gradeKey, gradeValue in pairs(jobData.grades) do
-        grades[#grades + 1] = {
-            grade = tonumber(gradeKey) or 0,
-            name = gradeValue.name or ('Grade ' .. gradeKey),
-            isBoss = gradeValue.isboss == true or gradeValue.isBoss == true or gradeValue.boss == true,
-        }
+    -- QBX carries the same BRPD, EBRSO and LSP rank definitions. Keep this as a
+    -- live fallback if the personnel service is restarting or unavailable.
+    local jobData = ps.getSharedJob(agencyKey)
+    if jobData and jobData.grades then
+        return formatJobGrades(jobData.grades)
     end
 
-    table.sort(grades, function(a, b) return a.grade < b.grade end)
-    return grades
+    print(('[ps-mdt] No rank definitions found for MDT agency %s'):format(agencyKey))
+    return {}
 end)
 
 -- Promote/demote an officer (change their job grade)
