@@ -35,6 +35,7 @@ export const SECURITY_CONFIG = {
 		"Weapons",
 		"Cases",
 		"Evidence",
+		"Fleet",
 		"Reports",
 		"Warrants",
 		"Charges",
