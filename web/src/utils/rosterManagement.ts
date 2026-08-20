@@ -4,6 +4,20 @@ export interface PromotionActionState {
 	hint: string;
 }
 
+export async function loadRosterManagementData(
+	loadTags: () => Promise<unknown>,
+	loadCurrentRanks: () => Promise<unknown>,
+	loadTransferRanks: () => Promise<unknown>,
+): Promise<void> {
+	await Promise.all([
+		loadTags(),
+		(async () => {
+			await loadCurrentRanks();
+			await loadTransferRanks();
+		})(),
+	]);
+}
+
 export function getPromotionActionState(
 	selectedGrade: number | null,
 	reason: string,

@@ -42,7 +42,11 @@
 	import { isEnvBrowser } from "../utils/misc";
 	import { NUI_EVENTS } from "../constants/nuiEvents";
 	import { globalNotifications } from "../services/notificationService.svelte";
-	import { getPromotionActionState, personnelActionMessage } from "../utils/rosterManagement";
+	import {
+		getPromotionActionState,
+		loadRosterManagementData,
+		personnelActionMessage,
+	} from "../utils/rosterManagement";
 	import type { AuthService } from "../services/authService.svelte";
 	import ActivityTimeline from "../components/ActivityTimeline.svelte";
 
@@ -494,11 +498,11 @@
 			showBossPanel = true;
 			isBossPanelLoading = true;
 			try {
-				await Promise.all([
-					loadOfficerTags(),
-					loadJobGrades(officer.department || "police"),
-					loadTransferGrades(transferAgency),
-				]);
+				await loadRosterManagementData(
+					loadOfficerTags,
+					() => loadJobGrades(officer.department || "police"),
+					() => loadTransferGrades(transferAgency),
+				);
 			} finally {
 				isBossPanelLoading = false;
 			}
