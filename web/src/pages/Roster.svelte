@@ -10,8 +10,10 @@
 			const t = el.getBoundingClientRect();
 			let x = e.clientX + 14;
 			let y = e.clientY + 16;
-			if (x + t.width > window.innerWidth - 4) x = e.clientX - t.width - 14;
-			if (y + t.height > window.innerHeight - 4) y = e.clientY - t.height - 16;
+			if (x + t.width > window.innerWidth - 4)
+				x = e.clientX - t.width - 14;
+			if (y + t.height > window.innerHeight - 4)
+				y = e.clientY - t.height - 16;
 			el.style.left = `${Math.max(4, x)}px`;
 			el.style.top = `${Math.max(4, y)}px`;
 		}
@@ -19,18 +21,34 @@
 			if (!cur || el) return;
 			el = document.createElement("div");
 			el.textContent = cur;
-			el.style.cssText = "position:fixed;z-index:99999;background:#111113;color:rgba(255,255,255,0.92);padding:6px 9px;border-radius:5px;font-size:11px;font-weight:500;line-height:1.4;max-width:240px;white-space:normal;word-break:break-word;border:1px solid rgba(255,255,255,0.12);box-shadow:0 8px 24px rgba(0,0,0,0.6);pointer-events:none;";
+			el.style.cssText =
+				"position:fixed;z-index:99999;background:#111113;color:rgba(255,255,255,0.92);padding:6px 9px;border-radius:5px;font-size:11px;font-weight:500;line-height:1.4;max-width:240px;white-space:normal;word-break:break-word;border:1px solid rgba(255,255,255,0.12);box-shadow:0 8px 24px rgba(0,0,0,0.6);pointer-events:none;";
 			document.body.appendChild(el);
 			place(e);
 		}
-		function move(e: MouseEvent) { if (el) place(e); }
-		function hide() { if (el) { el.remove(); el = null; } }
+		function move(e: MouseEvent) {
+			if (el) place(e);
+		}
+		function hide() {
+			if (el) {
+				el.remove();
+				el = null;
+			}
+		}
 		node.addEventListener("mouseenter", show);
 		node.addEventListener("mousemove", move);
 		node.addEventListener("mouseleave", hide);
 		return {
-			update(v: string | undefined) { cur = v; if (el && !v) hide(); },
-			destroy() { hide(); node.removeEventListener("mouseenter", show); node.removeEventListener("mousemove", move); node.removeEventListener("mouseleave", hide); },
+			update(v: string | undefined) {
+				cur = v;
+				if (el && !v) hide();
+			},
+			destroy() {
+				hide();
+				node.removeEventListener("mouseenter", show);
+				node.removeEventListener("mousemove", move);
+				node.removeEventListener("mouseleave", hide);
+			},
 		};
 	}
 
@@ -51,7 +69,10 @@
 	import type { AuthService } from "../services/authService.svelte";
 	import ActivityTimeline from "../components/ActivityTimeline.svelte";
 
-	let { authService, tabService }: { authService?: AuthService; tabService?: any } = $props();
+	let {
+		authService,
+		tabService,
+	}: { authService?: AuthService; tabService?: any } = $props();
 
 	interface Officer {
 		id: string;
@@ -146,12 +167,53 @@
 	// Boss panel state
 	let showBossPanel = $state(false);
 	let isBossPanelLoading = $state(false);
-	let bossPanelTab = $state<"rank" | "callsign" | "access" | "certs" | "ppr" | "fto" | "ia_history" | "activity">("rank");
-	let iaHistory = $state<Array<{ id: number; complaint_number: string; category: string; status: string; created_at: string }>>([]);
+	let bossPanelTab = $state<
+		| "rank"
+		| "callsign"
+		| "assignments"
+		| "access"
+		| "certs"
+		| "ppr"
+		| "fto"
+		| "ia_history"
+		| "activity"
+	>("rank");
+	let iaHistory = $state<
+		Array<{
+			id: number;
+			complaint_number: string;
+			category: string;
+			status: string;
+			created_at: string;
+		}>
+	>([]);
 	let iaHistoryLoading = $state(false);
-	let pprHistory = $state<Array<{ id: number; ppr_number: string; category: string; title: string; author_name: string; incident_date?: string; created_at: string }>>([]);
+	let pprHistory = $state<
+		Array<{
+			id: number;
+			ppr_number: string;
+			category: string;
+			title: string;
+			author_name: string;
+			incident_date?: string;
+			created_at: string;
+		}>
+	>([]);
 	let pprHistoryLoading = $state(false);
-	let ftoHistory = $state<Array<{ id: number; fto_number: string; status: string; trainer_name: string; trainee_name: string; phase_name?: string; start_date?: string; dor_count?: number; latest_rating?: number; created_at: string }>>([]);
+	let ftoHistory = $state<
+		Array<{
+			id: number;
+			fto_number: string;
+			status: string;
+			trainer_name: string;
+			trainee_name: string;
+			phase_name?: string;
+			start_date?: string;
+			dor_count?: number;
+			latest_rating?: number;
+			created_at: string;
+		}>
+	>([]);
 	let ftoHistoryLoading = $state(false);
 	let jobGrades = $state<JobGrade[]>([]);
 	let selectedGrade = $state<number | null>(null);
@@ -160,9 +222,9 @@
 	let showFireConfirm = $state(false);
 	let actionReason = $state("");
 	let editBadge = $state("");
-	let editAssignment = $state("patrol");
-	let assignmentPrimary = $state(false);
-	let assignmentActive = $state(true);
+	let editPrimaryAssignment = $state("patrol");
+	let editAdditionalRole = $state("recruitment");
+	let assignmentReason = $state("");
 	let editStatus = $state("active");
 	let transferAgency = $state("brpd");
 	let transferGrades = $state<JobGrade[]>([]);
@@ -176,7 +238,11 @@
 	let restrictionExpiresAt = $state("");
 	let showHireModal = $state(false);
 	let hireServerId = $state<string | number>("");
-	let hireCandidate = $state<{ serverId: number; citizenid: string; name: string } | null>(null);
+	let hireCandidate = $state<{
+		serverId: number;
+		citizenid: string;
+		name: string;
+	} | null>(null);
 	let hireBadge = $state("");
 	let hireCallsign = $state("");
 	let hireReason = $state("");
@@ -190,7 +256,12 @@
 	let taskForceExpiresAt = $state("");
 	let taskForceReason = $state("");
 	let taskForceAgencies = $state<string[]>(["brpd", "ebrso"]);
-	let taskForcePermissions = $state<string[]>(["records.view", "records.supplement", "evidence.view", "dispatch.view"]);
+	let taskForcePermissions = $state<string[]>([
+		"records.view",
+		"records.supplement",
+		"evidence.view",
+		"dispatch.view",
+	]);
 	let taskForceRecordTypes = $state<string[]>(["cases", "reports"]);
 	let taskForceCaseIds = $state("");
 	let taskForceReportIds = $state("");
@@ -204,22 +275,80 @@
 	let taskForceStatusReason = $state("");
 
 	const taskForcePermissionOptions = [
-		"records.view", "records.create", "records.supplement", "records.review", "records.lifecycle",
-		"evidence.view", "evidence.custody", "evidence.transfer", "evidence.submit", "evidence.release",
-		"dispatch.view", "dispatch.assign_other",
+		"records.view",
+		"records.create",
+		"records.supplement",
+		"records.review",
+		"records.lifecycle",
+		"evidence.view",
+		"evidence.custody",
+		"evidence.transfer",
+		"evidence.submit",
+		"evidence.release",
+		"dispatch.view",
+		"dispatch.assign_other",
 	];
 
-	let canManageCerts = $derived(authService?.hasPermission("roster_manage_certifications") ?? false);
-	let canHireOfficers = $derived(authService?.hasPermission("roster_hire_officers") ?? false);
-	let canManageOfficers = $derived(authService?.hasPermission("roster_manage_officers") ?? false);
-	let canViewTaskForces = $derived(authService?.hasPermission("taskforces_view") ?? false);
-	let canManageTaskForces = $derived(authService?.hasPermission("taskforces_manage") ?? false);
-	let canOpenPanel = $derived(canManageCerts || canManageOfficers);
-	let selectedGradeName = $derived(jobGrades.find((grade) => grade.grade === selectedGrade)?.name);
-	let promotionAction = $derived(
-		getPromotionActionState(selectedGrade, actionReason, selectedGradeName, isSavingBoss, isBossPanelLoading),
+	const primaryAssignmentOptions = [
+		{ value: "academy", label: "Academy" },
+		{ value: "field_training", label: "Field Training" },
+		{ value: "patrol", label: "Patrol" },
+		{ value: "investigations", label: "Investigations" },
+		{ value: "traffic", label: "Traffic" },
+		{ value: "internal_affairs", label: "Internal Affairs" },
+		{ value: "administration", label: "Administration" },
+	];
+
+	const additionalRoleOptions = [
+		{ value: "recruitment", label: "Recruitment" },
+		{ value: "personnel", label: "Personnel" },
+		{ value: "training", label: "Training" },
+		{ value: "dispatcher", label: "Dispatcher" },
+		{ value: "fleet_manager", label: "Fleet Manager" },
+		{ value: "incident_command", label: "Incident Command" },
+		{ value: "evidence", label: "Evidence" },
+		{ value: "field_training_officer", label: "Field Training Officer" },
+		{ value: "k9_unit", label: "K9 Unit" },
+		{ value: "tactical_unit", label: "Tactical Unit" },
+		{ value: "aviation_unit", label: "Aviation Unit" },
+		{ value: "interceptor_unit", label: "Interceptor Unit" },
+		{ value: "marine_unit", label: "Marine Unit" },
+		{ value: "public_information", label: "Public Information" },
+		{ value: "honor_guard", label: "Honor Guard" },
+	];
+
+	let canManageCerts = $derived(
+		authService?.hasPermission("roster_manage_certifications") ?? false,
 	);
-	let selectedTaskForce = $derived(taskForces.find((taskForce) => taskForce.id === selectedTaskForceId) || null);
+	let canHireOfficers = $derived(
+		authService?.hasPermission("roster_hire_officers") ?? false,
+	);
+	let canManageOfficers = $derived(
+		authService?.hasPermission("roster_manage_officers") ?? false,
+	);
+	let canViewTaskForces = $derived(
+		authService?.hasPermission("taskforces_view") ?? false,
+	);
+	let canManageTaskForces = $derived(
+		authService?.hasPermission("taskforces_manage") ?? false,
+	);
+	let canOpenPanel = $derived(canManageCerts || canManageOfficers);
+	let selectedGradeName = $derived(
+		jobGrades.find((grade) => grade.grade === selectedGrade)?.name,
+	);
+	let promotionAction = $derived(
+		getPromotionActionState(
+			selectedGrade,
+			actionReason,
+			selectedGradeName,
+			isSavingBoss,
+			isBossPanelLoading,
+		),
+	);
+	let selectedTaskForce = $derived(
+		taskForces.find((taskForce) => taskForce.id === selectedTaskForceId) ||
+			null,
+	);
 
 	// Phase 2: EMS-aware terminology. The roster is shared UI but the wording
 	// should match the caller's domain (police "Officer" vs EMS "Personnel").
@@ -352,9 +481,27 @@
 			];
 
 			activeUnits = [
-				{ id: "1", badgeNumber: "1001", firstName: "John", lastName: "Smith", callsign: "401" },
-				{ id: "2", badgeNumber: "1002", firstName: "Jane", lastName: "Doe", callsign: "455" },
-				{ id: "4", badgeNumber: "1004", firstName: "Sarah", lastName: "Wilson", callsign: "402" },
+				{
+					id: "1",
+					badgeNumber: "1001",
+					firstName: "John",
+					lastName: "Smith",
+					callsign: "401",
+				},
+				{
+					id: "2",
+					badgeNumber: "1002",
+					firstName: "Jane",
+					lastName: "Doe",
+					callsign: "455",
+				},
+				{
+					id: "4",
+					badgeNumber: "1004",
+					firstName: "Sarah",
+					lastName: "Wilson",
+					callsign: "402",
+				},
 			];
 
 			availableTags = [
@@ -420,7 +567,10 @@
 			return;
 		}
 		try {
-			const grades = await fetchNui<JobGrade[]>(NUI_EVENTS.ROSTER.GET_JOB_GRADES, { job: department });
+			const grades = await fetchNui<JobGrade[]>(
+				NUI_EVENTS.ROSTER.GET_JOB_GRADES,
+				{ job: department },
+			);
 			jobGrades = Array.isArray(grades) ? grades : [];
 		} catch {
 			jobGrades = [];
@@ -434,7 +584,10 @@
 			return;
 		}
 		try {
-			const grades = await fetchNui<JobGrade[]>(NUI_EVENTS.ROSTER.GET_JOB_GRADES, { job: agency });
+			const grades = await fetchNui<JobGrade[]>(
+				NUI_EVENTS.ROSTER.GET_JOB_GRADES,
+				{ job: agency },
+			);
 			transferGrades = Array.isArray(grades) ? grades : [];
 		} catch {
 			transferGrades = [];
@@ -447,8 +600,14 @@
 		return value.replace("T", " ") + (value.length === 16 ? ":00" : "");
 	}
 
-	function officerHasCompartment(officer: Officer | null, compartment: string): boolean {
-		return (officer?.compartments || []).some((value) => value === compartment || value.endsWith(`:${compartment}`));
+	function officerHasCompartment(
+		officer: Officer | null,
+		compartment: string,
+	): boolean {
+		return (officer?.compartments || []).some(
+			(value) =>
+				value === compartment || value.endsWith(`:${compartment}`),
+		);
 	}
 
 	function handleSort(column: string) {
@@ -480,9 +639,12 @@
 		editCallsign = officer.callsign || "";
 		editBadge = officer.badgeNumber || "";
 		editStatus = officer.employmentStatus || "active";
-		editAssignment = officer.primaryAssignment || officer.assignments?.[0] || "patrol";
-		assignmentPrimary = officer.primaryAssignment === editAssignment;
-		assignmentActive = true;
+		editPrimaryAssignment = officer.primaryAssignment || "patrol";
+		editAdditionalRole =
+			additionalRoleOptions.find(
+				(role) => !officer.assignments?.includes(role.value),
+			)?.value || "recruitment";
+		assignmentReason = "";
 		transferAgency = officer.department === "brpd" ? "ebrso" : "brpd";
 		transferGrade = null;
 		editCompartment = "internal_affairs";
@@ -545,31 +707,38 @@
 	}
 
 	async function saveCertifications() {
-		if (!selectedOfficer?.citizenid || actionReason.trim().length < 3) return;
+		if (!selectedOfficer?.citizenid || actionReason.trim().length < 3)
+			return;
 		isSavingCerts = true;
 		try {
-			const response = await fetchNui<{ success: boolean; message?: string }>(
-				NUI_EVENTS.ROSTER.UPDATE_OFFICER_CERTIFICATIONS,
-				{
-					citizenid: selectedOfficer.citizenid,
-					certifications: selectedCerts,
-					expiresAt: databaseDate(certExpiresAt),
-					reason: actionReason.trim(),
-				},
-			);
+			const response = await fetchNui<{
+				success: boolean;
+				message?: string;
+			}>(NUI_EVENTS.ROSTER.UPDATE_OFFICER_CERTIFICATIONS, {
+				citizenid: selectedOfficer.citizenid,
+				certifications: selectedCerts,
+				expiresAt: databaseDate(certExpiresAt),
+				reason: actionReason.trim(),
+			});
 			if (response?.success) {
-				const idx = officers.findIndex((o) => o.citizenid === selectedOfficer!.citizenid);
+				const idx = officers.findIndex(
+					(o) => o.citizenid === selectedOfficer!.citizenid,
+				);
 				if (idx !== -1) {
 					officers[idx].certifications = [...selectedCerts];
 				}
-				globalNotifications.success(`Updated certifications for ${selectedOfficer.firstName} ${selectedOfficer.lastName}`);
+				globalNotifications.success(
+					`Updated certifications for ${selectedOfficer.firstName} ${selectedOfficer.lastName}`,
+				);
 				if (showBossPanel) {
 					// Stay on boss panel, just show success
 				} else {
 					closeCertModal();
 				}
 			} else {
-				globalNotifications.error(response?.message || "Failed to update certifications");
+				globalNotifications.error(
+					response?.message || "Failed to update certifications",
+				);
 			}
 		} catch {
 			globalNotifications.error("Failed to update certifications");
@@ -579,32 +748,47 @@
 	}
 
 	async function promoteOfficer() {
-		if (!selectedOfficer?.citizenid || selectedGrade === null || actionReason.trim().length < 3) return;
+		if (
+			!selectedOfficer?.citizenid ||
+			selectedGrade === null ||
+			actionReason.trim().length < 3
+		)
+			return;
 		isSavingBoss = true;
 		try {
-			const response = await fetchNui<{ success: boolean; message?: string }>(
-				NUI_EVENTS.ROSTER.PROMOTE_OFFICER,
-				{
-					citizenid: selectedOfficer.citizenid,
-					job: selectedOfficer.department || "police",
-					grade: selectedGrade,
-					reason: actionReason.trim(),
-				},
-			);
+			const response = await fetchNui<{
+				success: boolean;
+				message?: string;
+			}>(NUI_EVENTS.ROSTER.PROMOTE_OFFICER, {
+				citizenid: selectedOfficer.citizenid,
+				job: selectedOfficer.department || "police",
+				grade: selectedGrade,
+				reason: actionReason.trim(),
+			});
 			if (response?.success) {
-				const gradeName = jobGrades.find((g) => g.grade === selectedGrade)?.name || `Grade ${selectedGrade}`;
-				const idx = officers.findIndex((o) => o.citizenid === selectedOfficer!.citizenid);
+				const gradeName =
+					jobGrades.find((g) => g.grade === selectedGrade)?.name ||
+					`Grade ${selectedGrade}`;
+				const idx = officers.findIndex(
+					(o) => o.citizenid === selectedOfficer!.citizenid,
+				);
 				if (idx !== -1) {
 					officers[idx].rank = gradeName;
 				}
 				selectedOfficer.rank = gradeName;
 				selectedGrade = null;
-				globalNotifications.success(response.message || `Rank updated to ${gradeName}`);
+				globalNotifications.success(
+					response.message || `Rank updated to ${gradeName}`,
+				);
 			} else {
-				globalNotifications.error(personnelActionMessage(response?.message));
+				globalNotifications.error(
+					personnelActionMessage(response?.message),
+				);
 			}
 		} catch {
-			globalNotifications.error(personnelActionMessage("service_unavailable"));
+			globalNotifications.error(
+				personnelActionMessage("service_unavailable"),
+			);
 		} finally {
 			isSavingBoss = false;
 		}
@@ -613,22 +797,34 @@
 	let deleteUserData = $state(false);
 
 	async function fireOfficer() {
-		if (!selectedOfficer?.citizenid || actionReason.trim().length < 3) return;
+		if (!selectedOfficer?.citizenid || actionReason.trim().length < 3)
+			return;
 		isSavingBoss = true;
 		try {
-			const response = await fetchNui<{ success: boolean; message?: string }>(
-				NUI_EVENTS.ROSTER.FIRE_OFFICER,
-				{ citizenid: selectedOfficer.citizenid, deleteData: deleteUserData, reason: actionReason.trim() },
-			);
+			const response = await fetchNui<{
+				success: boolean;
+				message?: string;
+			}>(NUI_EVENTS.ROSTER.FIRE_OFFICER, {
+				citizenid: selectedOfficer.citizenid,
+				deleteData: deleteUserData,
+				reason: actionReason.trim(),
+			});
 			if (response?.success) {
-				globalNotifications.success(response.message || `${term.member} has been terminated`);
+				globalNotifications.success(
+					response.message || `${term.member} has been terminated`,
+				);
 				closeBossPanel();
 				await loadRoster();
 			} else {
-				globalNotifications.error(response?.message || `Failed to terminate ${term.memberLower}`);
+				globalNotifications.error(
+					response?.message ||
+						`Failed to terminate ${term.memberLower}`,
+				);
 			}
 		} catch {
-			globalNotifications.error(`Failed to terminate ${term.memberLower}`);
+			globalNotifications.error(
+				`Failed to terminate ${term.memberLower}`,
+			);
 		} finally {
 			isSavingBoss = false;
 			showFireConfirm = false;
@@ -641,10 +837,18 @@
 		iaHistoryLoading = true;
 		try {
 			const officerName = `${selectedOfficer.firstName} ${selectedOfficer.lastName}`;
-			const result = await fetchNui<Array<{ id: number; complaint_number: string; category: string; status: string; created_at: string }>>(
+			const result = await fetchNui<
+				Array<{
+					id: number;
+					complaint_number: string;
+					category: string;
+					status: string;
+					created_at: string;
+				}>
+			>(
 				NUI_EVENTS.IA.GET_IA_HISTORY_FOR_OFFICER,
 				{ officerName, officerCid: selectedOfficer.citizenid },
-				[]
+				[],
 			);
 			iaHistory = Array.isArray(result) ? result : [];
 		} catch {
@@ -654,17 +858,25 @@
 	}
 
 	function formatIAStatus(status: string): string {
-		return status.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
+		return status
+			.replace(/_/g, " ")
+			.replace(/\b\w/g, (c) => c.toUpperCase());
 	}
 
 	function getIAStatusClass(status: string): string {
 		switch (status) {
-			case 'open': return 'pill-blue';
-			case 'under_review': return 'pill-orange';
-			case 'investigated': return 'pill-yellow';
-			case 'sustained': return 'pill-red';
-			case 'exonerated': return 'pill-green';
-			default: return 'pill-gray';
+			case "open":
+				return "pill-blue";
+			case "under_review":
+				return "pill-orange";
+			case "investigated":
+				return "pill-yellow";
+			case "sustained":
+				return "pill-red";
+			case "exonerated":
+				return "pill-green";
+			default:
+				return "pill-gray";
 		}
 	}
 
@@ -672,10 +884,20 @@
 		if (!selectedOfficer?.citizenid) return;
 		pprHistoryLoading = true;
 		try {
-			const result = await fetchNui<Array<{ id: number; ppr_number: string; category: string; title: string; author_name: string; incident_date?: string; created_at: string }>>(
+			const result = await fetchNui<
+				Array<{
+					id: number;
+					ppr_number: string;
+					category: string;
+					title: string;
+					author_name: string;
+					incident_date?: string;
+					created_at: string;
+				}>
+			>(
 				NUI_EVENTS.PPR.GET_OFFICER_PPR_HISTORY,
 				{ officerCitizenId: selectedOfficer.citizenid },
-				[]
+				[],
 			);
 			pprHistory = Array.isArray(result) ? result : [];
 		} catch {
@@ -691,7 +913,7 @@
 			const result = await fetchNui<Array<any>>(
 				NUI_EVENTS.FTO.GET_OFFICER_FTO_HISTORY,
 				{ officerCitizenId: selectedOfficer.citizenid },
-				[]
+				[],
 			);
 			ftoHistory = Array.isArray(result) ? result : [];
 		} catch {
@@ -702,25 +924,36 @@
 
 	function getFTOStatusClass(status: string): string {
 		switch (status) {
-			case 'active': return 'status-active';
-			case 'completed': return 'status-completed';
-			case 'failed': return 'status-failed';
-			case 'suspended': return 'status-suspended';
-			default: return '';
+			case "active":
+				return "status-active";
+			case "completed":
+				return "status-completed";
+			case "failed":
+				return "status-failed";
+			case "suspended":
+				return "status-suspended";
+			default:
+				return "";
 		}
 	}
 
 	function getPPRCategoryClass(category: string): string {
 		switch (category) {
-			case 'positive': return 'pill-green';
-			case 'coaching': return 'pill-orange';
-			case 'disciplinary': return 'pill-red';
-			default: return 'pill-gray';
+			case "positive":
+				return "pill-green";
+			case "coaching":
+				return "pill-orange";
+			case "disciplinary":
+				return "pill-red";
+			default:
+				return "pill-gray";
 		}
 	}
 
 	function formatPPRCategory(category: string): string {
-		return category.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
+		return category
+			.replace(/_/g, " ")
+			.replace(/\b\w/g, (c) => c.toUpperCase());
 	}
 
 	function formatDateShort(dateStr: string): string {
@@ -728,25 +961,37 @@
 	}
 
 	async function saveCallsign() {
-		if (!selectedOfficer?.citizenid || !editCallsign.trim() || actionReason.trim().length < 3) return;
+		if (
+			!selectedOfficer?.citizenid ||
+			!editCallsign.trim() ||
+			actionReason.trim().length < 3
+		)
+			return;
 		isSavingBoss = true;
 		try {
-			const response = await fetchNui<{ success: boolean; message?: string }>(
-				NUI_EVENTS.ROSTER.UPDATE_CALLSIGN,
-				{
-					citizenid: selectedOfficer.citizenid,
-					callsign: editCallsign.trim(),
-					reason: actionReason.trim(),
-				},
-			);
+			const response = await fetchNui<{
+				success: boolean;
+				message?: string;
+			}>(NUI_EVENTS.ROSTER.UPDATE_CALLSIGN, {
+				citizenid: selectedOfficer.citizenid,
+				callsign: editCallsign.trim(),
+				reason: actionReason.trim(),
+			});
 			if (response?.success) {
-				const idx = officers.findIndex((o) => o.citizenid === selectedOfficer!.citizenid);
+				const idx = officers.findIndex(
+					(o) => o.citizenid === selectedOfficer!.citizenid,
+				);
 				if (idx !== -1) {
 					officers[idx].callsign = editCallsign.trim();
 				}
-				globalNotifications.success(response.message || `Callsign updated to ${editCallsign.trim()}`);
+				globalNotifications.success(
+					response.message ||
+						`Callsign updated to ${editCallsign.trim()}`,
+				);
 			} else {
-				globalNotifications.error(response?.message || "Failed to update callsign");
+				globalNotifications.error(
+					response?.message || "Failed to update callsign",
+				);
 			}
 		} catch {
 			globalNotifications.error("Failed to update callsign");
@@ -756,109 +1001,261 @@
 	}
 
 	async function saveBadge() {
-		if (!selectedOfficer?.citizenid || !editBadge.trim() || actionReason.trim().length < 3) return;
+		if (
+			!selectedOfficer?.citizenid ||
+			!editBadge.trim() ||
+			actionReason.trim().length < 3
+		)
+			return;
 		isSavingBoss = true;
 		try {
-			const response = await fetchNui<{ success: boolean; message?: string }>(NUI_EVENTS.ROSTER.UPDATE_BADGE, {
-				citizenid: selectedOfficer.citizenid, badge: editBadge.trim(), reason: actionReason.trim(),
-			});
-			if (response?.success) {
-				selectedOfficer.badgeNumber = editBadge.trim();
-				globalNotifications.success(response.message || "Badge number updated");
-			} else globalNotifications.error(response?.message || "Failed to update badge number");
-		} catch { globalNotifications.error("Failed to update badge number"); }
-		finally { isSavingBoss = false; }
-	}
-
-	async function saveAssignment() {
-		if (!selectedOfficer?.citizenid || actionReason.trim().length < 3) return;
-		isSavingBoss = true;
-		try {
-			const response = await fetchNui<{ success: boolean; message?: string }>(NUI_EVENTS.ROSTER.UPDATE_ASSIGNMENT, {
-				citizenid: selectedOfficer.citizenid, assignment: editAssignment,
-				primary: assignmentPrimary, active: assignmentActive, reason: actionReason.trim(),
-			});
-			if (response?.success) {
-				globalNotifications.success(response.message || "Assignment updated");
-				await loadRoster();
-			}
-			else globalNotifications.error(response?.message || "Failed to update assignment");
-		} catch { globalNotifications.error("Failed to update assignment"); }
-		finally { isSavingBoss = false; }
-	}
-
-	async function transferOfficer() {
-		if (!selectedOfficer?.citizenid || transferGrade === null || actionReason.trim().length < 3) return;
-		isSavingBoss = true;
-		try {
-			const response = await fetchNui<{ success: boolean; message?: string }>(NUI_EVENTS.ROSTER.TRANSFER_OFFICER, {
-				citizenid: selectedOfficer.citizenid, agency: transferAgency, grade: transferGrade,
+			const response = await fetchNui<{
+				success: boolean;
+				message?: string;
+			}>(NUI_EVENTS.ROSTER.UPDATE_BADGE, {
+				citizenid: selectedOfficer.citizenid,
+				badge: editBadge.trim(),
 				reason: actionReason.trim(),
 			});
 			if (response?.success) {
-				globalNotifications.success(response.message || "Officer transferred");
+				selectedOfficer.badgeNumber = editBadge.trim();
+				globalNotifications.success(
+					response.message || "Badge number updated",
+				);
+			} else
+				globalNotifications.error(
+					response?.message || "Failed to update badge number",
+				);
+		} catch {
+			globalNotifications.error("Failed to update badge number");
+		} finally {
+			isSavingBoss = false;
+		}
+	}
+
+	async function saveAssignmentChange(
+		assignment: string,
+		primary: boolean,
+		active: boolean,
+	) {
+		if (!selectedOfficer?.citizenid || assignmentReason.trim().length < 3)
+			return;
+		isSavingBoss = true;
+		try {
+			const response = await fetchNui<{
+				success: boolean;
+				message?: string;
+			}>(NUI_EVENTS.ROSTER.UPDATE_ASSIGNMENT, {
+				citizenid: selectedOfficer.citizenid,
+				assignment,
+				primary,
+				active,
+				reason: assignmentReason.trim(),
+			});
+			if (response?.success) {
+				globalNotifications.success(
+					response.message || "Assignment updated",
+				);
+				const selectedCitizenId = selectedOfficer.citizenid;
+				await loadRoster();
+				const refreshedOfficer = officers.find(
+					(officer) => officer.citizenid === selectedCitizenId,
+				);
+				if (refreshedOfficer) selectedOfficer = refreshedOfficer;
+				if (selectedOfficer) {
+					editPrimaryAssignment =
+						selectedOfficer.primaryAssignment ||
+						editPrimaryAssignment;
+					editAdditionalRole =
+						additionalRoleOptions.find(
+							(role) =>
+								!selectedOfficer?.assignments?.includes(
+									role.value,
+								),
+						)?.value || "";
+				}
+				assignmentReason = "";
+			} else
+				globalNotifications.error(
+					response?.message || "Failed to update assignment",
+				);
+		} catch {
+			globalNotifications.error("Failed to update assignment");
+		} finally {
+			isSavingBoss = false;
+		}
+	}
+
+	async function savePrimaryAssignment() {
+		await saveAssignmentChange(editPrimaryAssignment, true, true);
+	}
+
+	async function addAdditionalRole() {
+		await saveAssignmentChange(editAdditionalRole, false, true);
+	}
+
+	async function removeAdditionalRole(role: string) {
+		await saveAssignmentChange(role, false, false);
+	}
+
+	async function transferOfficer() {
+		if (
+			!selectedOfficer?.citizenid ||
+			transferGrade === null ||
+			actionReason.trim().length < 3
+		)
+			return;
+		isSavingBoss = true;
+		try {
+			const response = await fetchNui<{
+				success: boolean;
+				message?: string;
+			}>(NUI_EVENTS.ROSTER.TRANSFER_OFFICER, {
+				citizenid: selectedOfficer.citizenid,
+				agency: transferAgency,
+				grade: transferGrade,
+				reason: actionReason.trim(),
+			});
+			if (response?.success) {
+				globalNotifications.success(
+					response.message || "Officer transferred",
+				);
 				closeBossPanel();
 				await loadRoster();
-			} else globalNotifications.error(response?.message || "Failed to transfer officer");
-		} catch { globalNotifications.error("Failed to transfer officer"); }
-		finally { isSavingBoss = false; }
+			} else
+				globalNotifications.error(
+					response?.message || "Failed to transfer officer",
+				);
+		} catch {
+			globalNotifications.error("Failed to transfer officer");
+		} finally {
+			isSavingBoss = false;
+		}
 	}
 
 	async function saveCompartment() {
-		if (!selectedOfficer?.citizenid || actionReason.trim().length < 3) return;
+		if (!selectedOfficer?.citizenid || actionReason.trim().length < 3)
+			return;
 		isSavingBoss = true;
 		try {
-			const response = await fetchNui<{ success: boolean; message?: string }>(NUI_EVENTS.ROSTER.UPDATE_COMPARTMENT, {
-				citizenid: selectedOfficer.citizenid, compartment: editCompartment, active: compartmentActive,
-				expiresAt: databaseDate(compartmentExpiresAt), reason: actionReason.trim(),
+			const response = await fetchNui<{
+				success: boolean;
+				message?: string;
+			}>(NUI_EVENTS.ROSTER.UPDATE_COMPARTMENT, {
+				citizenid: selectedOfficer.citizenid,
+				compartment: editCompartment,
+				active: compartmentActive,
+				expiresAt: databaseDate(compartmentExpiresAt),
+				reason: actionReason.trim(),
 			});
 			if (response?.success) {
-				globalNotifications.success(response.message || "Protected access updated");
+				globalNotifications.success(
+					response.message || "Protected access updated",
+				);
 				await loadRoster();
-			} else globalNotifications.error(response?.message || "Failed to update protected access");
-		} catch { globalNotifications.error("Failed to update protected access"); }
-		finally { isSavingBoss = false; }
+			} else
+				globalNotifications.error(
+					response?.message || "Failed to update protected access",
+				);
+		} catch {
+			globalNotifications.error("Failed to update protected access");
+		} finally {
+			isSavingBoss = false;
+		}
 	}
 
 	async function grantTemporaryPermission() {
-		if (!selectedOfficer?.citizenid || !permissionExpiresAt || actionReason.trim().length < 3) return;
+		if (
+			!selectedOfficer?.citizenid ||
+			!permissionExpiresAt ||
+			actionReason.trim().length < 3
+		)
+			return;
 		isSavingBoss = true;
 		try {
-			const response = await fetchNui<{ success: boolean; message?: string }>(NUI_EVENTS.ROSTER.GRANT_PERMISSION, {
-				citizenid: selectedOfficer.citizenid, permission: editPermission,
-				expiresAt: databaseDate(permissionExpiresAt), reason: actionReason.trim(),
+			const response = await fetchNui<{
+				success: boolean;
+				message?: string;
+			}>(NUI_EVENTS.ROSTER.GRANT_PERMISSION, {
+				citizenid: selectedOfficer.citizenid,
+				permission: editPermission,
+				expiresAt: databaseDate(permissionExpiresAt),
+				reason: actionReason.trim(),
 			});
-			if (response?.success) globalNotifications.success(response.message || "Temporary permission granted");
-			else globalNotifications.error(response?.message || "Failed to grant temporary permission");
-		} catch { globalNotifications.error("Failed to grant temporary permission"); }
-		finally { isSavingBoss = false; }
+			if (response?.success)
+				globalNotifications.success(
+					response.message || "Temporary permission granted",
+				);
+			else
+				globalNotifications.error(
+					response?.message || "Failed to grant temporary permission",
+				);
+		} catch {
+			globalNotifications.error("Failed to grant temporary permission");
+		} finally {
+			isSavingBoss = false;
+		}
 	}
 
 	async function saveRestriction() {
-		if (!selectedOfficer?.citizenid || actionReason.trim().length < 3) return;
+		if (!selectedOfficer?.citizenid || actionReason.trim().length < 3)
+			return;
 		isSavingBoss = true;
 		try {
-			const response = await fetchNui<{ success: boolean; message?: string }>(NUI_EVENTS.ROSTER.RESTRICT_PERMISSION, {
-				citizenid: selectedOfficer.citizenid, permission: editPermission, active: restrictionActive,
-				expiresAt: databaseDate(restrictionExpiresAt), reason: actionReason.trim(),
+			const response = await fetchNui<{
+				success: boolean;
+				message?: string;
+			}>(NUI_EVENTS.ROSTER.RESTRICT_PERMISSION, {
+				citizenid: selectedOfficer.citizenid,
+				permission: editPermission,
+				active: restrictionActive,
+				expiresAt: databaseDate(restrictionExpiresAt),
+				reason: actionReason.trim(),
 			});
-			if (response?.success) globalNotifications.success(response.message || "Permission restriction updated");
-			else globalNotifications.error(response?.message || "Failed to update permission restriction");
-		} catch { globalNotifications.error("Failed to update permission restriction"); }
-		finally { isSavingBoss = false; }
+			if (response?.success)
+				globalNotifications.success(
+					response.message || "Permission restriction updated",
+				);
+			else
+				globalNotifications.error(
+					response?.message ||
+						"Failed to update permission restriction",
+				);
+		} catch {
+			globalNotifications.error(
+				"Failed to update permission restriction",
+			);
+		} finally {
+			isSavingBoss = false;
+		}
 	}
 
 	async function saveStatus() {
-		if (!selectedOfficer?.citizenid || actionReason.trim().length < 3) return;
+		if (!selectedOfficer?.citizenid || actionReason.trim().length < 3)
+			return;
 		isSavingBoss = true;
 		try {
-			const response = await fetchNui<{ success: boolean; message?: string }>(NUI_EVENTS.ROSTER.UPDATE_STATUS, {
-				citizenid: selectedOfficer.citizenid, status: editStatus, reason: actionReason.trim(),
+			const response = await fetchNui<{
+				success: boolean;
+				message?: string;
+			}>(NUI_EVENTS.ROSTER.UPDATE_STATUS, {
+				citizenid: selectedOfficer.citizenid,
+				status: editStatus,
+				reason: actionReason.trim(),
 			});
-			if (response?.success) globalNotifications.success(response.message || "Employment status updated");
-			else globalNotifications.error(response?.message || "Failed to update employment status");
-		} catch { globalNotifications.error("Failed to update employment status"); }
-		finally { isSavingBoss = false; }
+			if (response?.success)
+				globalNotifications.success(
+					response.message || "Employment status updated",
+				);
+			else
+				globalNotifications.error(
+					response?.message || "Failed to update employment status",
+				);
+		} catch {
+			globalNotifications.error("Failed to update employment status");
+		} finally {
+			isSavingBoss = false;
+		}
 	}
 
 	function closeHireModal() {
@@ -875,51 +1272,114 @@
 		if (!/^\d+$/.test(serverId)) return;
 		isSavingBoss = true;
 		try {
-			const response = await fetchNui<{ success: boolean; message?: string; candidate?: { serverId: number; citizenid: string; name: string } }>(NUI_EVENTS.ROSTER.RESOLVE_HIRE_CANDIDATE, {
+			const response = await fetchNui<{
+				success: boolean;
+				message?: string;
+				candidate?: {
+					serverId: number;
+					citizenid: string;
+					name: string;
+				};
+			}>(NUI_EVENTS.ROSTER.RESOLVE_HIRE_CANDIDATE, {
 				serverId: Number(serverId),
 			});
-			if (response?.success && response.candidate) hireCandidate = response.candidate;
-			else globalNotifications.error(response?.message || "Player could not be verified");
-		} catch { globalNotifications.error("Player could not be verified"); }
-		finally { isSavingBoss = false; }
+			if (response?.success && response.candidate)
+				hireCandidate = response.candidate;
+			else
+				globalNotifications.error(
+					response?.message || "Player could not be verified",
+				);
+		} catch {
+			globalNotifications.error("Player could not be verified");
+		} finally {
+			isSavingBoss = false;
+		}
 	}
 
 	async function hireOfficer() {
-		if (!hireCandidate || [hireBadge, hireCallsign, hireReason].some((value) => value.trim().length < 3)) return;
+		if (
+			!hireCandidate ||
+			[hireBadge, hireCallsign, hireReason].some(
+				(value) => value.trim().length < 3,
+			)
+		)
+			return;
 		isSavingBoss = true;
 		try {
-			const response = await fetchNui<{ success: boolean; message?: string }>(NUI_EVENTS.ROSTER.HIRE_OFFICER, {
-				serverId: hireCandidate.serverId, expectedCitizenId: hireCandidate.citizenid,
-				badge: hireBadge.trim(), callsign: hireCallsign.trim(), reason: hireReason.trim(),
+			const response = await fetchNui<{
+				success: boolean;
+				message?: string;
+			}>(NUI_EVENTS.ROSTER.HIRE_OFFICER, {
+				serverId: hireCandidate.serverId,
+				expectedCitizenId: hireCandidate.citizenid,
+				badge: hireBadge.trim(),
+				callsign: hireCallsign.trim(),
+				reason: hireReason.trim(),
 			});
 			if (response?.success) {
-				globalNotifications.success(response.message || "Officer hired");
+				globalNotifications.success(
+					response.message || "Officer hired",
+				);
 				closeHireModal();
 				await loadRoster();
-			} else globalNotifications.error(response?.message || "Failed to hire officer");
-		} catch { globalNotifications.error("Failed to hire officer"); }
-		finally { isSavingBoss = false; }
+			} else
+				globalNotifications.error(
+					response?.message || "Failed to hire officer",
+				);
+		} catch {
+			globalNotifications.error("Failed to hire officer");
+		} finally {
+			isSavingBoss = false;
+		}
 	}
 
 	function toggleTaskForceValue(values: string[], value: string): string[] {
-		return values.includes(value) ? values.filter((entry) => entry !== value) : [...values, value];
+		return values.includes(value)
+			? values.filter((entry) => entry !== value)
+			: [...values, value];
 	}
 
 	function parseTaskForceNumbers(value: string): number[] {
-		return [...new Set(value.split(",").map((entry) => Number(entry.trim())).filter((entry) => Number.isInteger(entry) && entry > 0))];
+		return [
+			...new Set(
+				value
+					.split(",")
+					.map((entry) => Number(entry.trim()))
+					.filter((entry) => Number.isInteger(entry) && entry > 0),
+			),
+		];
 	}
 
 	function parseTaskForceStrings(value: string): string[] {
-		return [...new Set(value.split(",").map((entry) => entry.trim()).filter(Boolean))];
+		return [
+			...new Set(
+				value
+					.split(",")
+					.map((entry) => entry.trim())
+					.filter(Boolean),
+			),
+		];
 	}
 
 	async function loadTaskForces() {
 		taskForceLoading = true;
 		try {
-			const response = await fetchNui<{ success: boolean; taskForces?: TaskForce[]; message?: string }>("getTaskForces", {});
-			taskForces = response?.success && Array.isArray(response.taskForces) ? response.taskForces : [];
-			if (!response?.success && response?.message) globalNotifications.error(response.message);
-			if (!taskForces.some((taskForce) => taskForce.id === selectedTaskForceId)) {
+			const response = await fetchNui<{
+				success: boolean;
+				taskForces?: TaskForce[];
+				message?: string;
+			}>("getTaskForces", {});
+			taskForces =
+				response?.success && Array.isArray(response.taskForces)
+					? response.taskForces
+					: [];
+			if (!response?.success && response?.message)
+				globalNotifications.error(response.message);
+			if (
+				!taskForces.some(
+					(taskForce) => taskForce.id === selectedTaskForceId,
+				)
+			) {
 				selectedTaskForceId = taskForces[0]?.id || "";
 			}
 		} catch {
@@ -937,12 +1397,26 @@
 	}
 
 	async function createTaskForce() {
-		if (!canManageTaskForces || taskForceName.trim().length < 3 || taskForceReason.trim().length < 3 ||
-			!taskForceExpiresAt || taskForceAgencies.length < 2 || taskForcePermissions.length === 0 ||
-			(taskForceRecordTypes.length === 0 && !taskForceCaseIds.trim() && !taskForceReportIds.trim() && !taskForceIncidentIds.trim())) return;
+		if (
+			!canManageTaskForces ||
+			taskForceName.trim().length < 3 ||
+			taskForceReason.trim().length < 3 ||
+			!taskForceExpiresAt ||
+			taskForceAgencies.length < 2 ||
+			taskForcePermissions.length === 0 ||
+			(taskForceRecordTypes.length === 0 &&
+				!taskForceCaseIds.trim() &&
+				!taskForceReportIds.trim() &&
+				!taskForceIncidentIds.trim())
+		)
+			return;
 		taskForceSaving = true;
 		try {
-			const response = await fetchNui<{ success: boolean; message?: string; taskForce?: { id?: string } }>("createTaskForce", {
+			const response = await fetchNui<{
+				success: boolean;
+				message?: string;
+				taskForce?: { id?: string };
+			}>("createTaskForce", {
 				name: taskForceName.trim(),
 				expiresAt: databaseDate(taskForceExpiresAt),
 				reason: taskForceReason.trim(),
@@ -956,23 +1430,46 @@
 				},
 			});
 			if (response?.success) {
-				globalNotifications.success(response.message || "Task force created");
-				taskForceName = ""; taskForceReason = ""; taskForceExpiresAt = "";
-				taskForceCaseIds = ""; taskForceReportIds = ""; taskForceIncidentIds = "";
+				globalNotifications.success(
+					response.message || "Task force created",
+				);
+				taskForceName = "";
+				taskForceReason = "";
+				taskForceExpiresAt = "";
+				taskForceCaseIds = "";
+				taskForceReportIds = "";
+				taskForceIncidentIds = "";
 				await loadTaskForces();
-				if (response.taskForce?.id) selectedTaskForceId = response.taskForce.id;
+				if (response.taskForce?.id)
+					selectedTaskForceId = response.taskForce.id;
 				taskForceCreating = false;
-			} else globalNotifications.error(response?.message || "Failed to create task force");
-		} catch { globalNotifications.error("Failed to create task force"); }
-		finally { taskForceSaving = false; }
+			} else
+				globalNotifications.error(
+					response?.message || "Failed to create task force",
+				);
+		} catch {
+			globalNotifications.error("Failed to create task force");
+		} finally {
+			taskForceSaving = false;
+		}
 	}
 
 	async function saveTaskForceMember() {
-		if (!selectedTaskForce || !taskForceMemberCitizenId || taskForceMemberReason.trim().length < 3 ||
-			((taskForceMemberStatus === "active" || taskForceMemberStatus === "suspended") && !taskForceMemberExpiresAt)) return;
+		if (
+			!selectedTaskForce ||
+			!taskForceMemberCitizenId ||
+			taskForceMemberReason.trim().length < 3 ||
+			((taskForceMemberStatus === "active" ||
+				taskForceMemberStatus === "suspended") &&
+				!taskForceMemberExpiresAt)
+		)
+			return;
 		taskForceSaving = true;
 		try {
-			const response = await fetchNui<{ success: boolean; message?: string }>("setTaskForceMember", {
+			const response = await fetchNui<{
+				success: boolean;
+				message?: string;
+			}>("setTaskForceMember", {
 				taskForceId: selectedTaskForce.id,
 				citizenid: taskForceMemberCitizenId,
 				role: taskForceMemberRole,
@@ -981,30 +1478,50 @@
 				reason: taskForceMemberReason.trim(),
 			});
 			if (response?.success) {
-				globalNotifications.success(response.message || "Task force membership updated");
+				globalNotifications.success(
+					response.message || "Task force membership updated",
+				);
 				taskForceMemberReason = "";
 				await loadTaskForces();
-			} else globalNotifications.error(response?.message || "Failed to update task force member");
-		} catch { globalNotifications.error("Failed to update task force member"); }
-		finally { taskForceSaving = false; }
+			} else
+				globalNotifications.error(
+					response?.message || "Failed to update task force member",
+				);
+		} catch {
+			globalNotifications.error("Failed to update task force member");
+		} finally {
+			taskForceSaving = false;
+		}
 	}
 
 	async function saveTaskForceStatus() {
-		if (!selectedTaskForce || taskForceStatusReason.trim().length < 3) return;
+		if (!selectedTaskForce || taskForceStatusReason.trim().length < 3)
+			return;
 		taskForceSaving = true;
 		try {
-			const response = await fetchNui<{ success: boolean; message?: string }>("setTaskForceStatus", {
+			const response = await fetchNui<{
+				success: boolean;
+				message?: string;
+			}>("setTaskForceStatus", {
 				taskForceId: selectedTaskForce.id,
 				status: taskForceStatus,
 				reason: taskForceStatusReason.trim(),
 			});
 			if (response?.success) {
-				globalNotifications.success(response.message || "Task force status updated");
+				globalNotifications.success(
+					response.message || "Task force status updated",
+				);
 				taskForceStatusReason = "";
 				await loadTaskForces();
-			} else globalNotifications.error(response?.message || "Failed to update task force status");
-		} catch { globalNotifications.error("Failed to update task force status"); }
-		finally { taskForceSaving = false; }
+			} else
+				globalNotifications.error(
+					response?.message || "Failed to update task force status",
+				);
+		} catch {
+			globalNotifications.error("Failed to update task force status");
+		} finally {
+			taskForceSaving = false;
+		}
 	}
 
 	function getTagColor(certName: string): string {
@@ -1012,7 +1529,9 @@
 		return tag?.color || "#6b7280";
 	}
 	function getTagDescription(certName: string): string {
-		return availableTags.find((t) => t.name === certName)?.description || "";
+		return (
+			availableTags.find((t) => t.name === certName)?.description || ""
+		);
 	}
 </script>
 
@@ -1025,14 +1544,27 @@
 			class="search-input"
 		/>
 		<div class="topbar-right">
-			<span class="result-count">{filteredOfficers.length} {term.memberLower}{filteredOfficers.length !== 1 ? "s" : ""}</span>
+			<span class="result-count"
+				>{filteredOfficers.length}
+				{term.memberLower}{filteredOfficers.length !== 1
+					? "s"
+					: ""}</span
+			>
 			{#if canHireOfficers && !isEmsDomain}
-				<button class="btn-save" onclick={() => showHireModal = true}>Hire Officer</button>
+				<button class="btn-save" onclick={() => (showHireModal = true)}
+					>Hire Officer</button
+				>
 			{/if}
 			{#if canViewTaskForces && !isEmsDomain}
-				<button class="btn-secondary" onclick={openTaskForces}>Task Forces</button>
+				<button class="btn-secondary" onclick={openTaskForces}
+					>Task Forces</button
+				>
 			{/if}
-			<button class="btn-secondary" onclick={refreshData} disabled={isLoading}>
+			<button
+				class="btn-secondary"
+				onclick={refreshData}
+				disabled={isLoading}
+			>
 				{isLoading ? "Loading..." : "Refresh"}
 			</button>
 		</div>
@@ -1041,11 +1573,27 @@
 	<div class="content-area">
 		<div class="list-panel">
 			<div class="table-header">
-				<button class="col-header sortable" onclick={() => handleSort("status")}>Status{getSortIndicator("status")}</button>
-				<button class="col-header sortable" onclick={() => handleSort("callsign")}>Call Sign{getSortIndicator("callsign")}</button>
-				<button class="col-header sortable" onclick={() => handleSort("name")}>Name{getSortIndicator("name")}</button>
+				<button
+					class="col-header sortable"
+					onclick={() => handleSort("status")}
+					>Status{getSortIndicator("status")}</button
+				>
+				<button
+					class="col-header sortable"
+					onclick={() => handleSort("callsign")}
+					>Call Sign{getSortIndicator("callsign")}</button
+				>
+				<button
+					class="col-header sortable"
+					onclick={() => handleSort("name")}
+					>Name{getSortIndicator("name")}</button
+				>
 				<span class="col-header">Radio Ch.</span>
-				<button class="col-header sortable" onclick={() => handleSort("rank")}>Rank{getSortIndicator("rank")}</button>
+				<button
+					class="col-header sortable"
+					onclick={() => handleSort("rank")}
+					>Rank{getSortIndicator("rank")}</button
+				>
 				<span class="col-header">Dept</span>
 				<span class="col-header">Certifications</span>
 			</div>
@@ -1073,25 +1621,46 @@
 							onclick={() => openOfficerPanel(officer)}
 						>
 							<span class="cell-status">
-								<span class="status-pill" class:on-duty={officer.status === "On Duty"} class:off-duty={officer.status === "Off Duty"}>
+								<span
+									class="status-pill"
+									class:on-duty={officer.status === "On Duty"}
+									class:off-duty={officer.status ===
+										"Off Duty"}
+								>
 									{officer.status}
 								</span>
 							</span>
-							<span class="cell-callsign">{officer.callsign}</span>
-							<span class="cell-name">{officer.firstName} {officer.lastName}</span>
+							<span class="cell-callsign">{officer.callsign}</span
+							>
+							<span class="cell-name"
+								>{officer.firstName} {officer.lastName}</span
+							>
 							<span class="cell-radio">
 								{#if officer.radioChannel && officer.radioChannel > 0}
-									<span class="radio-badge">{officer.radioChannel}</span>
+									<span class="radio-badge"
+										>{officer.radioChannel}</span
+									>
 								{:else}
 									<span class="cell-muted">-</span>
 								{/if}
 							</span>
 							<span class="cell-rank">{officer.rank}</span>
-							<span class="cell-dept">{officer.departmentLabel || officer.department || "-"}</span>
+							<span class="cell-dept"
+								>{officer.departmentLabel ||
+									officer.department ||
+									"-"}</span
+							>
 							<span class="cell-certs">
 								{#if officer.certifications.length > 0}
 									{#each officer.certifications as cert}
-										<span class="cert-tag" use:tip={getTagDescription(cert)} style="border-color: {getTagColor(cert)}40; color: {getTagColor(cert)}">{cert}</span>
+										<span
+											class="cert-tag"
+											use:tip={getTagDescription(cert)}
+											style="border-color: {getTagColor(
+												cert,
+											)}40; color: {getTagColor(cert)}"
+											>{cert}</span
+										>
 									{/each}
 								{:else}
 									<span class="cell-muted">-</span>
@@ -1116,7 +1685,9 @@
 					{#each activeUnits as unit (unit.id)}
 						<div class="unit-row">
 							<span class="unit-callsign">{unit.callsign}</span>
-							<span class="unit-name">{unit.firstName.charAt(0)}. {unit.lastName}</span>
+							<span class="unit-name"
+								>{unit.firstName.charAt(0)}. {unit.lastName}</span
+							>
 						</div>
 					{/each}
 				</div>
@@ -1134,7 +1705,10 @@
 			<div class="modal-header">
 				<div class="modal-title-area">
 					<span class="modal-title">Manage Certifications</span>
-					<span class="modal-subtitle">{selectedOfficer.firstName} {selectedOfficer.lastName} - {selectedOfficer.callsign}</span>
+					<span class="modal-subtitle"
+						>{selectedOfficer.firstName}
+						{selectedOfficer.lastName} - {selectedOfficer.callsign}</span
+					>
 				</div>
 				<button class="modal-close" onclick={closeCertModal}>
 					<span class="material-icons">close</span>
@@ -1143,34 +1717,59 @@
 
 			<div class="modal-body">
 				<label class="boss-label">Written Reason</label>
-				<input class="callsign-input" bind:value={actionReason} maxlength="500" placeholder="Required reason for this personnel action" />
+				<input
+					class="callsign-input"
+					bind:value={actionReason}
+					maxlength="500"
+					placeholder="Required reason for this personnel action"
+				/>
 				<label class="boss-label">Expiration or Renewal Date</label>
-				<input class="callsign-input" type="datetime-local" bind:value={certExpiresAt} />
-				<p class="boss-hint">Optional. When supplied, every selected certification is issued or renewed through this date.</p>
+				<input
+					class="callsign-input"
+					type="datetime-local"
+					bind:value={certExpiresAt}
+				/>
+				<p class="boss-hint">
+					Optional. When supplied, every selected certification is
+					issued or renewed through this date.
+				</p>
 				{#if availableTags.length === 0}
 					<div class="no-tags">
-						<span class="material-icons no-tags-icon">label_off</span>
+						<span class="material-icons no-tags-icon"
+							>label_off</span
+						>
 						<p>No certifications available.</p>
-						<p class="no-tags-hint">Create {term.memberLower} tags in Management &gt; Tags</p>
+						<p class="no-tags-hint">
+							Create {term.memberLower} tags in Management &gt; Tags
+						</p>
 					</div>
 				{:else}
 					<div class="cert-grid">
 						{#each availableTags as tag (tag.id)}
 							<button
 								class="cert-option"
-								class:selected={selectedCerts.includes(tag.name)}
+								class:selected={selectedCerts.includes(
+									tag.name,
+								)}
 								onclick={() => toggleCert(tag.name)}
 								use:tip={tag.description}
 								style="--tag-color: {tag.color}"
 							>
 								<span class="cert-check">
 									{#if selectedCerts.includes(tag.name)}
-										<span class="material-icons">check_circle</span>
+										<span class="material-icons"
+											>check_circle</span
+										>
 									{:else}
-										<span class="material-icons">radio_button_unchecked</span>
+										<span class="material-icons"
+											>radio_button_unchecked</span
+										>
 									{/if}
 								</span>
-								<span class="cert-color-dot" style="background: {tag.color}"></span>
+								<span
+									class="cert-color-dot"
+									style="background: {tag.color}"
+								></span>
 								<span class="cert-label">{tag.name}</span>
 							</button>
 						{/each}
@@ -1179,11 +1778,15 @@
 			</div>
 
 			<div class="modal-footer">
-				<button class="btn-cancel" onclick={closeCertModal}>Cancel</button>
+				<button class="btn-cancel" onclick={closeCertModal}
+					>Cancel</button
+				>
 				<button
 					class="btn-save"
 					onclick={saveCertifications}
-					disabled={isSavingCerts || availableTags.length === 0 || actionReason.trim().length < 3}
+					disabled={isSavingCerts ||
+						availableTags.length === 0 ||
+						actionReason.trim().length < 3}
 				>
 					{isSavingCerts ? "Saving..." : "Save"}
 				</button>
@@ -1201,7 +1804,11 @@
 			<div class="modal-header">
 				<div class="modal-title-area">
 					<span class="modal-title">{term.management}</span>
-					<span class="modal-subtitle">{selectedOfficer.firstName} {selectedOfficer.lastName} &bull; {selectedOfficer.callsign} &bull; {selectedOfficer.rank}</span>
+					<span class="modal-subtitle"
+						>{selectedOfficer.firstName}
+						{selectedOfficer.lastName} &bull; {selectedOfficer.callsign}
+						&bull; {selectedOfficer.rank}</span
+					>
 				</div>
 				<button class="modal-close" onclick={closeBossPanel}>
 					<span class="material-icons">close</span>
@@ -1209,37 +1816,118 @@
 			</div>
 
 			<div class="boss-tabs">
-				<button class="boss-tab" class:active={bossPanelTab === "rank"} onclick={() => { bossPanelTab = "rank"; showFireConfirm = false; }}>
-					<span class="material-icons boss-tab-icon">military_tech</span>
+				<button
+					class="boss-tab"
+					class:active={bossPanelTab === "rank"}
+					onclick={() => {
+						bossPanelTab = "rank";
+						showFireConfirm = false;
+					}}
+				>
+					<span class="material-icons boss-tab-icon"
+						>military_tech</span
+					>
 					Rank
 				</button>
-				<button class="boss-tab" class:active={bossPanelTab === "callsign"} onclick={() => { bossPanelTab = "callsign"; showFireConfirm = false; }}>
+				<button
+					class="boss-tab"
+					class:active={bossPanelTab === "callsign"}
+					onclick={() => {
+						bossPanelTab = "callsign";
+						showFireConfirm = false;
+					}}
+				>
 					<span class="material-icons boss-tab-icon">badge</span>
 					Identity
 				</button>
-				<button class="boss-tab" class:active={bossPanelTab === "access"} onclick={() => { bossPanelTab = "access"; showFireConfirm = false; }}>
-					<span class="material-icons boss-tab-icon">admin_panel_settings</span>
+				{#if canManageOfficers}
+					<button
+						class="boss-tab"
+						class:active={bossPanelTab === "assignments"}
+						onclick={() => {
+							bossPanelTab = "assignments";
+							showFireConfirm = false;
+						}}
+					>
+						<span class="material-icons boss-tab-icon"
+							>assignment_ind</span
+						>
+						Assignments
+					</button>
+				{/if}
+				<button
+					class="boss-tab"
+					class:active={bossPanelTab === "access"}
+					onclick={() => {
+						bossPanelTab = "access";
+						showFireConfirm = false;
+					}}
+				>
+					<span class="material-icons boss-tab-icon"
+						>admin_panel_settings</span
+					>
 					Access
 				</button>
 				{#if canManageCerts}
-					<button class="boss-tab" class:active={bossPanelTab === "certs"} onclick={() => { bossPanelTab = "certs"; showFireConfirm = false; }}>
-						<span class="material-icons boss-tab-icon">verified</span>
+					<button
+						class="boss-tab"
+						class:active={bossPanelTab === "certs"}
+						onclick={() => {
+							bossPanelTab = "certs";
+							showFireConfirm = false;
+						}}
+					>
+						<span class="material-icons boss-tab-icon"
+							>verified</span
+						>
 						Certifications
 					</button>
 				{/if}
-				<button class="boss-tab" class:active={bossPanelTab === "ppr"} onclick={() => { bossPanelTab = "ppr"; showFireConfirm = false; loadOfficerPPR(); }}>
-					<span class="material-icons boss-tab-icon">rate_review</span>
+				<button
+					class="boss-tab"
+					class:active={bossPanelTab === "ppr"}
+					onclick={() => {
+						bossPanelTab = "ppr";
+						showFireConfirm = false;
+						loadOfficerPPR();
+					}}
+				>
+					<span class="material-icons boss-tab-icon">rate_review</span
+					>
 					PPR
 				</button>
-				<button class="boss-tab" class:active={bossPanelTab === "fto"} onclick={() => { bossPanelTab = "fto"; showFireConfirm = false; loadOfficerFTO(); }}>
+				<button
+					class="boss-tab"
+					class:active={bossPanelTab === "fto"}
+					onclick={() => {
+						bossPanelTab = "fto";
+						showFireConfirm = false;
+						loadOfficerFTO();
+					}}
+				>
 					<span class="material-icons boss-tab-icon">school</span>
 					FTO
 				</button>
-				<button class="boss-tab" class:active={bossPanelTab === "ia_history"} onclick={() => { bossPanelTab = "ia_history"; showFireConfirm = false; loadIAHistory(); }}>
+				<button
+					class="boss-tab"
+					class:active={bossPanelTab === "ia_history"}
+					onclick={() => {
+						bossPanelTab = "ia_history";
+						showFireConfirm = false;
+						loadIAHistory();
+					}}
+				>
 					<span class="material-icons boss-tab-icon">shield</span>
 					IA History
 				</button>
-				<button class="boss-tab" class:active={bossPanelTab === "activity"} onclick={() => { bossPanelTab = "activity"; showFireConfirm = false; }}>
+				<button
+					class="boss-tab"
+					class:active={bossPanelTab === "activity"}
+					onclick={() => {
+						bossPanelTab = "activity";
+						showFireConfirm = false;
+					}}
+				>
 					<span class="material-icons boss-tab-icon">history</span>
 					Activity
 				</button>
@@ -1248,17 +1936,33 @@
 			<div class="boss-body">
 				{#if bossPanelTab === "rank" || bossPanelTab === "callsign" || bossPanelTab === "access" || bossPanelTab === "certs"}
 					<div class="boss-section">
-						<label class="boss-label">{bossPanelTab === "rank" ? "Step 1. Written Reason" : "Written Reason"}</label>
-						<input class="callsign-input" bind:value={actionReason} maxlength="500" placeholder="Required reason for this personnel action" />
+						<label class="boss-label"
+							>{bossPanelTab === "rank"
+								? "Step 1. Written Reason"
+								: "Written Reason"}</label
+						>
+						<input
+							class="callsign-input"
+							bind:value={actionReason}
+							maxlength="500"
+							placeholder="Required reason for this personnel action"
+						/>
 						{#if bossPanelTab === "rank"}
-							<p class="boss-hint">A reason is required for the permanent personnel record.</p>
+							<p class="boss-hint">
+								A reason is required for the permanent personnel
+								record.
+							</p>
 						{/if}
 					</div>
 				{/if}
 				{#if bossPanelTab === "rank"}
 					<div class="boss-section">
-						<label class="boss-label">Step 2. Select New Rank</label>
-						<p class="boss-hint">Current rank: <strong>{selectedOfficer.rank}</strong>. You may only select a rank below your own.</p>
+						<label class="boss-label">Step 2. Select New Rank</label
+						>
+						<p class="boss-hint">
+							Current rank: <strong>{selectedOfficer.rank}</strong
+							>. You may only select a rank below your own.
+						</p>
 						{#if isBossPanelLoading && jobGrades.length === 0}
 							<div class="no-tags">
 								<div class="loading-spinner"></div>
@@ -1266,34 +1970,61 @@
 							</div>
 						{:else if jobGrades.length === 0}
 							<div class="no-tags">
-								<p>No ranks could be loaded for {selectedOfficer.departmentLabel || selectedOfficer.department || "this agency"}.</p>
+								<p>
+									No ranks could be loaded for {selectedOfficer.departmentLabel ||
+										selectedOfficer.department ||
+										"this agency"}.
+								</p>
 							</div>
 						{:else}
 							<div class="grade-grid">
 								{#each jobGrades as grade (grade.grade)}
 									<button
 										class="grade-option"
-										class:selected={selectedGrade === grade.grade}
-										class:current={grade.name === selectedOfficer.rank}
+										class:selected={selectedGrade ===
+											grade.grade}
+										class:current={grade.name ===
+											selectedOfficer.rank}
 										class:is-boss={grade.isBoss}
-										onclick={() => selectedGrade = grade.grade}
+										disabled={grade.isBoss}
+										onclick={() => {
+											if (!grade.isBoss)
+												selectedGrade = grade.grade;
+										}}
 									>
-										<span class="grade-number">{grade.grade}</span>
-										<span class="grade-name">{grade.name}</span>
+										<span class="grade-number"
+											>{grade.grade}</span
+										>
+										<span class="grade-name"
+											>{grade.name}</span
+										>
 										{#if grade.name === selectedOfficer.rank}
-											<span class="grade-current">Current</span>
+											<span class="grade-current"
+												>Current</span
+											>
 										{/if}
 										{#if grade.isBoss}
-											<span class="grade-boss-badge">Head</span>
+											<span class="grade-boss-badge"
+												>Admin Only</span
+											>
 										{/if}
 									</button>
 								{/each}
 							</div>
-							<div class="grade-action-row" style="margin-top: 10px; display: flex; justify-content: flex-end;">
+							<div
+								class="grade-action-row"
+								style="margin-top: 10px; display: flex; justify-content: flex-end;"
+							>
 								<div style="flex: 1; align-self: center;">
-									<p class="boss-hint" style="margin: 0;">{promotionAction.hint}</p>
+									<p class="boss-hint" style="margin: 0;">
+										{promotionAction.hint}
+									</p>
 								</div>
-								<button class="btn-save" onclick={promoteOfficer} disabled={promotionAction.disabled}>
+								<button
+									class="btn-save"
+									onclick={promoteOfficer}
+									disabled={promotionAction.disabled}
+								>
 									{promotionAction.label}
 								</button>
 							</div>
@@ -1304,55 +2035,115 @@
 
 					<div class="boss-section">
 						<label class="boss-label">Agency Transfer</label>
-						<p class="boss-hint">Transfer the officer to another agency at an approved receiving rank.</p>
+						<p class="boss-hint">
+							Transfer the officer to another agency at an
+							approved receiving rank.
+						</p>
 						<div class="callsign-input-row">
-							<select class="callsign-input" bind:value={transferAgency} onchange={() => loadTransferGrades(transferAgency)}>
-								<option value="brpd">BRPD</option><option value="ebrso">EBRSO</option><option value="lsp">LSP</option>
+							<select
+								class="callsign-input"
+								bind:value={transferAgency}
+								onchange={() =>
+									loadTransferGrades(transferAgency)}
+							>
+								<option value="brpd">BRPD</option><option
+									value="ebrso">EBRSO</option
+								><option value="lsp">LSP</option>
 							</select>
-							<select class="callsign-input" bind:value={transferGrade}>
-								<option value={null}>Select receiving rank</option>
-								{#each transferGrades as grade (grade.grade)}<option value={grade.grade}>{grade.name}</option>{/each}
+							<select
+								class="callsign-input"
+								bind:value={transferGrade}
+							>
+								<option value={null}
+									>Select receiving rank</option
+								>
+								{#each transferGrades as grade (grade.grade)}<option
+										value={grade.grade}>{grade.name}</option
+									>{/each}
 							</select>
-							<button class="btn-save" onclick={transferOfficer} disabled={isSavingBoss || transferGrade === null || actionReason.trim().length < 3}>Transfer</button>
+							<button
+								class="btn-save"
+								onclick={transferOfficer}
+								disabled={isSavingBoss ||
+									transferGrade === null ||
+									actionReason.trim().length < 3}
+								>Transfer</button
+							>
 						</div>
 					</div>
 
 					<div class="boss-divider"></div>
 
 					<div class="boss-section">
-						<label class="boss-label boss-label-danger">{term.terminate}</label>
+						<label class="boss-label boss-label-danger"
+							>{term.terminate}</label
+						>
 						<p class="boss-hint">{term.removeHint}</p>
 						{#if !showFireConfirm}
-							<button class="btn-fire" onclick={() => showFireConfirm = true}>
-								<span class="material-icons">person_remove</span>
+							<button
+								class="btn-fire"
+								onclick={() => (showFireConfirm = true)}
+							>
+								<span class="material-icons">person_remove</span
+								>
 								{term.terminate}
 							</button>
 						{:else}
 							<div class="fire-confirm">
-								<p class="fire-warning">Are you sure you want to terminate <strong>{selectedOfficer.firstName} {selectedOfficer.lastName}</strong>?</p>
+								<p class="fire-warning">
+									Are you sure you want to terminate <strong
+										>{selectedOfficer.firstName}
+										{selectedOfficer.lastName}</strong
+									>?
+								</p>
 								{#if isEmsDomain}
 									<label class="fire-delete-toggle">
-										<input type="checkbox" bind:checked={deleteUserData} />
-										<span>Delete all user data from MDT</span>
+										<input
+											type="checkbox"
+											bind:checked={deleteUserData}
+										/>
+										<span
+											>Delete all user data from MDT</span
+										>
 									</label>
 									{#if deleteUserData}
-										<p class="fire-delete-hint">Removes this person's logs, tags, status, FTO/PPR file, clock records and patrol membership. Reports, evidence, cases, warrants and arrests are kept.</p>
+										<p class="fire-delete-hint">
+											Removes this person's logs, tags,
+											status, FTO/PPR file, clock records
+											and patrol membership. Reports,
+											evidence, cases, warrants and
+											arrests are kept.
+										</p>
 									{/if}
 								{/if}
 								<div class="fire-actions">
-									<button class="btn-cancel" onclick={() => showFireConfirm = false}>Cancel</button>
-									<button class="btn-fire-confirm" onclick={fireOfficer} disabled={isSavingBoss || actionReason.trim().length < 3}>
-										{isSavingBoss ? "Processing..." : "Confirm Termination"}
+									<button
+										class="btn-cancel"
+										onclick={() =>
+											(showFireConfirm = false)}
+										>Cancel</button
+									>
+									<button
+										class="btn-fire-confirm"
+										onclick={fireOfficer}
+										disabled={isSavingBoss ||
+											actionReason.trim().length < 3}
+									>
+										{isSavingBoss
+											? "Processing..."
+											: "Confirm Termination"}
 									</button>
 								</div>
 							</div>
 						{/if}
 					</div>
-
 				{:else if bossPanelTab === "callsign"}
 					<div class="boss-section">
 						<label class="boss-label">Edit Callsign</label>
-						<p class="boss-hint">Update this {term.memberLower}'s persistent callsign and permanent badge number.</p>
+						<p class="boss-hint">
+							Update this {term.memberLower}'s persistent callsign
+							and permanent badge number.
+						</p>
 						<div class="callsign-input-row">
 							<input
 								type="text"
@@ -1361,64 +2152,213 @@
 								placeholder="Enter callsign..."
 								maxlength="16"
 							/>
-							<button class="btn-save" onclick={saveCallsign} disabled={isSavingBoss || editCallsign.trim().length === 0 || actionReason.trim().length < 3}>Save Callsign</button>
+							<button
+								class="btn-save"
+								onclick={saveCallsign}
+								disabled={isSavingBoss ||
+									editCallsign.trim().length === 0 ||
+									actionReason.trim().length < 3}
+								>Save Callsign</button
+							>
 						</div>
 						<label class="boss-label">Permanent Badge Number</label>
 						<div class="callsign-input-row">
-							<input type="text" class="callsign-input" bind:value={editBadge} maxlength="20" placeholder="Badge number" />
-							<button class="btn-save" onclick={saveBadge} disabled={isSavingBoss || editBadge.trim().length === 0 || actionReason.trim().length < 3}>Save Badge</button>
-						</div>
-						<label class="boss-label">Assignment</label>
-						<div class="callsign-input-row">
-							<select class="callsign-input" bind:value={editAssignment}>
-								<option value="academy">Academy</option>
-								<option value="field_training">Field Training</option>
-								<option value="patrol">Patrol</option>
-								<option value="investigations">Investigations</option>
-								<option value="traffic">Traffic</option>
-								<option value="administration">Administration</option>
-								<option value="internal_affairs">Internal Affairs</option>
-								<option value="personnel">Personnel</option>
-								<option value="recruitment">Recruitment</option>
-								<option value="training">Training</option>
-								<option value="dispatcher">Dispatcher</option>
-								<option value="fleet_manager">Fleet Manager</option>
-								<option value="incident_command">Incident Command</option>
-								<option value="evidence">Evidence</option>
-								<option value="field_training_officer">Field Training Officer</option>
-								<option value="k9_unit">K9 Unit</option>
-								<option value="tactical_unit">Tactical Unit (SWAT)</option>
-								<option value="aviation_unit">Aviation Unit (Air)</option>
-								<option value="interceptor_unit">Interceptor Unit</option>
-								<option value="marine_unit">Marine Unit</option>
-								<option value="public_information">Public Information</option>
-								<option value="honor_guard">Honor Guard</option>
-							</select>
-							<label class="fire-delete-toggle"><input type="checkbox" bind:checked={assignmentPrimary} /><span>Primary</span></label>
-							<label class="fire-delete-toggle"><input type="checkbox" bind:checked={assignmentActive} /><span>Active</span></label>
-							<button class="btn-save" onclick={saveAssignment} disabled={isSavingBoss || actionReason.trim().length < 3}>{assignmentActive ? "Assign" : "Remove"}</button>
+							<input
+								type="text"
+								class="callsign-input"
+								bind:value={editBadge}
+								maxlength="20"
+								placeholder="Badge number"
+							/>
+							<button
+								class="btn-save"
+								onclick={saveBadge}
+								disabled={isSavingBoss ||
+									editBadge.trim().length === 0 ||
+									actionReason.trim().length < 3}
+								>Save Badge</button
+							>
 						</div>
 						<label class="boss-label">Employment Status</label>
 						<div class="callsign-input-row">
-							<select class="callsign-input" bind:value={editStatus}>
-								<option value="probationary">Probationary</option><option value="active">Active</option>
-								<option value="leave">Leave</option><option value="suspended">Suspended</option>
+							<select
+								class="callsign-input"
+								bind:value={editStatus}
+							>
+								<option value="probationary"
+									>Probationary</option
+								><option value="active">Active</option>
+								<option value="leave">Leave</option><option
+									value="suspended">Suspended</option
+								>
 							</select>
-							<button class="btn-save" onclick={saveStatus} disabled={isSavingBoss || actionReason.trim().length < 3}>Update Status</button>
+							<button
+								class="btn-save"
+								onclick={saveStatus}
+								disabled={isSavingBoss ||
+									actionReason.trim().length < 3}
+								>Update Status</button
+							>
 						</div>
 					</div>
+				{:else if bossPanelTab === "assignments"}
+					<div class="assignment-management">
+						<div class="assignment-reason">
+							<label class="boss-label" for="assignment-reason"
+								>Written Reason</label
+							>
+							<input
+								id="assignment-reason"
+								class="callsign-input"
+								bind:value={assignmentReason}
+								maxlength="500"
+								placeholder="Required reason for this assignment change"
+							/>
+							<p class="boss-hint">
+								Enter at least 3 characters. The reason is saved
+								to the permanent personnel record.
+							</p>
+						</div>
 
+						<div class="assignment-card">
+							<div class="assignment-card-heading">
+								<div>
+									<label class="boss-label"
+										>Primary Assignment</label
+									>
+									<p class="boss-hint">
+										The officer's main permanent work
+										placement. Changing it automatically
+										closes the previous primary assignment.
+									</p>
+								</div>
+								<span class="assignment-current"
+									>Current: {primaryAssignmentOptions.find(
+										(option) =>
+											option.value ===
+											selectedOfficer?.primaryAssignment,
+									)?.label || "Not set"}</span
+								>
+							</div>
+							<div class="assignment-action-row">
+								<select
+									class="callsign-input"
+									bind:value={editPrimaryAssignment}
+								>
+									{#each primaryAssignmentOptions as option (option.value)}
+										<option value={option.value}
+											>{option.label}</option
+										>
+									{/each}
+								</select>
+								<button
+									class="btn-save"
+									onclick={savePrimaryAssignment}
+									disabled={isSavingBoss ||
+										assignmentReason.trim().length < 3 ||
+										editPrimaryAssignment ===
+											selectedOfficer?.primaryAssignment}
+									>Change Primary Assignment</button
+								>
+							</div>
+						</div>
+
+						<div class="assignment-card">
+							<label class="boss-label">Additional Roles</label>
+							<p class="boss-hint">
+								Extra responsibilities held alongside the
+								primary assignment. These roles do not replace
+								the officer's main placement.
+							</p>
+							<div class="assignment-role-list">
+								{#each additionalRoleOptions.filter( (role) => selectedOfficer?.assignments?.includes(role.value), ) as role (role.value)}
+									<div class="assignment-role">
+										<span>{role.label}</span>
+										<button
+											class="assignment-remove"
+											onclick={() =>
+												removeAdditionalRole(
+													role.value,
+												)}
+											disabled={isSavingBoss ||
+												assignmentReason.trim().length <
+													3}>Remove</button
+										>
+									</div>
+								{:else}
+									<p class="assignment-empty">
+										No additional roles assigned.
+									</p>
+								{/each}
+							</div>
+							<div class="assignment-action-row">
+								<select
+									class="callsign-input"
+									bind:value={editAdditionalRole}
+								>
+									{#each additionalRoleOptions.filter((role) => !selectedOfficer?.assignments?.includes(role.value)) as role (role.value)}
+										<option value={role.value}
+											>{role.label}</option
+										>
+									{/each}
+								</select>
+								<button
+									class="btn-save"
+									onclick={addAdditionalRole}
+									disabled={isSavingBoss ||
+										assignmentReason.trim().length < 3 ||
+										!editAdditionalRole ||
+										selectedOfficer?.assignments?.includes(
+											editAdditionalRole,
+										)}>Add Additional Role</button
+								>
+							</div>
+						</div>
+					</div>
 				{:else if bossPanelTab === "access"}
 					<div class="boss-section">
 						<label class="boss-label">Protected Compartment</label>
-						<p class="boss-hint">Protected records require explicit compartment access. Rank alone never bypasses this control.</p>
+						<p class="boss-hint">
+							Protected records require explicit compartment
+							access. Rank alone never bypasses this control.
+						</p>
 						<div class="callsign-input-row">
-							<select class="callsign-input" bind:value={editCompartment} onchange={() => compartmentActive = !officerHasCompartment(selectedOfficer, editCompartment)}>
-								<option value="internal_affairs">Internal Affairs</option><option value="undercover">Undercover</option><option value="personnel">Protected Personnel</option>
+							<select
+								class="callsign-input"
+								bind:value={editCompartment}
+								onchange={() =>
+									(compartmentActive = !officerHasCompartment(
+										selectedOfficer,
+										editCompartment,
+									))}
+							>
+								<option value="internal_affairs"
+									>Internal Affairs</option
+								><option value="undercover">Undercover</option
+								><option value="personnel"
+									>Protected Personnel</option
+								>
 							</select>
-							<input class="callsign-input" type="datetime-local" bind:value={compartmentExpiresAt} />
-							<label class="fire-delete-toggle"><input type="checkbox" bind:checked={compartmentActive} /><span>Active</span></label>
-							<button class="btn-save" onclick={saveCompartment} disabled={isSavingBoss || actionReason.trim().length < 3}>{compartmentActive ? "Grant" : "Revoke"}</button>
+							<input
+								class="callsign-input"
+								type="datetime-local"
+								bind:value={compartmentExpiresAt}
+							/>
+							<label class="fire-delete-toggle"
+								><input
+									type="checkbox"
+									bind:checked={compartmentActive}
+								/><span>Active</span></label
+							>
+							<button
+								class="btn-save"
+								onclick={saveCompartment}
+								disabled={isSavingBoss ||
+									actionReason.trim().length < 3}
+								>{compartmentActive
+									? "Grant"
+									: "Revoke"}</button
+							>
 						</div>
 					</div>
 
@@ -1426,182 +2366,344 @@
 
 					<div class="boss-section">
 						<label class="boss-label">Permission Override</label>
-						<p class="boss-hint">Agency heads may issue expiring access or place an explicit restriction. Restrictions win over every rank and assignment permission.</p>
+						<p class="boss-hint">
+							Agency heads may issue expiring access or place an
+							explicit restriction. Restrictions win over every
+							rank and assignment permission.
+						</p>
 						<div class="callsign-input-row">
-							<select class="callsign-input" bind:value={editPermission}>
-								<option value="records.review">Review Records</option><option value="records.lifecycle">Manage Record Lifecycle</option>
-								<option value="dispatch.assign_other">Assign Dispatch Units</option><option value="dispatch.major_incident">Manage Major Incidents</option>
-								<option value="evidence.release">Release Evidence</option><option value="personnel.protected_view">View Protected Personnel</option>
-								<option value="compartment.internal_affairs">Internal Affairs Records</option>
+							<select
+								class="callsign-input"
+								bind:value={editPermission}
+							>
+								<option value="records.review"
+									>Review Records</option
+								><option value="records.lifecycle"
+									>Manage Record Lifecycle</option
+								>
+								<option value="dispatch.assign_other"
+									>Assign Dispatch Units</option
+								><option value="dispatch.major_incident"
+									>Manage Major Incidents</option
+								>
+								<option value="evidence.release"
+									>Release Evidence</option
+								><option value="personnel.protected_view"
+									>View Protected Personnel</option
+								>
+								<option value="compartment.internal_affairs"
+									>Internal Affairs Records</option
+								>
 							</select>
-							<input class="callsign-input" type="datetime-local" bind:value={permissionExpiresAt} />
-							<button class="btn-save" onclick={grantTemporaryPermission} disabled={isSavingBoss || !permissionExpiresAt || actionReason.trim().length < 3}>Temporary Grant</button>
+							<input
+								class="callsign-input"
+								type="datetime-local"
+								bind:value={permissionExpiresAt}
+							/>
+							<button
+								class="btn-save"
+								onclick={grantTemporaryPermission}
+								disabled={isSavingBoss ||
+									!permissionExpiresAt ||
+									actionReason.trim().length < 3}
+								>Temporary Grant</button
+							>
 						</div>
 						<div class="callsign-input-row">
-							<input class="callsign-input" type="datetime-local" bind:value={restrictionExpiresAt} />
-							<label class="fire-delete-toggle"><input type="checkbox" bind:checked={restrictionActive} /><span>Restricted</span></label>
-							<button class="btn-save" onclick={saveRestriction} disabled={isSavingBoss || actionReason.trim().length < 3}>{restrictionActive ? "Restrict" : "Restore"}</button>
+							<input
+								class="callsign-input"
+								type="datetime-local"
+								bind:value={restrictionExpiresAt}
+							/>
+							<label class="fire-delete-toggle"
+								><input
+									type="checkbox"
+									bind:checked={restrictionActive}
+								/><span>Restricted</span></label
+							>
+							<button
+								class="btn-save"
+								onclick={saveRestriction}
+								disabled={isSavingBoss ||
+									actionReason.trim().length < 3}
+								>{restrictionActive
+									? "Restrict"
+									: "Restore"}</button
+							>
 						</div>
 					</div>
-
 				{:else if bossPanelTab === "certs"}
 					<div class="boss-section">
 						<label class="boss-label">Manage Certifications</label>
-						<input class="callsign-input" type="datetime-local" bind:value={certExpiresAt} />
-						<p class="boss-hint">Expiration is optional. Supplying one renews every selected certification through that date.</p>
+						<input
+							class="callsign-input"
+							type="datetime-local"
+							bind:value={certExpiresAt}
+						/>
+						<p class="boss-hint">
+							Expiration is optional. Supplying one renews every
+							selected certification through that date.
+						</p>
 						{#if availableTags.length === 0}
 							<div class="no-tags">
-								<span class="material-icons no-tags-icon">label_off</span>
+								<span class="material-icons no-tags-icon"
+									>label_off</span
+								>
 								<p>No certifications available.</p>
-								<p class="no-tags-hint">Create {term.memberLower} tags in Management &gt; Tags</p>
+								<p class="no-tags-hint">
+									Create {term.memberLower} tags in Management
+									&gt; Tags
+								</p>
 							</div>
 						{:else}
 							<div class="cert-grid">
 								{#each availableTags as tag (tag.id)}
 									<button
 										class="cert-option"
-										class:selected={selectedCerts.includes(tag.name)}
+										class:selected={selectedCerts.includes(
+											tag.name,
+										)}
 										onclick={() => toggleCert(tag.name)}
 										use:tip={tag.description}
 										style="--tag-color: {tag.color}"
 									>
 										<span class="cert-check">
 											{#if selectedCerts.includes(tag.name)}
-												<span class="material-icons">check_circle</span>
+												<span class="material-icons"
+													>check_circle</span
+												>
 											{:else}
-												<span class="material-icons">radio_button_unchecked</span>
+												<span class="material-icons"
+													>radio_button_unchecked</span
+												>
 											{/if}
 										</span>
-										<span class="cert-color-dot" style="background: {tag.color}"></span>
-										<span class="cert-label">{tag.name}</span>
+										<span
+											class="cert-color-dot"
+											style="background: {tag.color}"
+										></span>
+										<span class="cert-label"
+											>{tag.name}</span
+										>
 									</button>
 								{/each}
 							</div>
 						{/if}
 					</div>
-
 				{:else if bossPanelTab === "ppr"}
 					<div class="boss-section">
 						<label class="boss-label">Performance Reviews</label>
-						<p class="boss-hint">Performance planning and review entries for this {term.memberLower}.</p>
+						<p class="boss-hint">
+							Performance planning and review entries for this {term.memberLower}.
+						</p>
 						{#if pprHistoryLoading}
 							<p class="boss-hint">Loading...</p>
 						{:else if pprHistory.length === 0}
 							<div class="no-tags">
-								<span class="material-icons no-tags-icon">rate_review</span>
-								<p>No PPR entries found for this {term.memberLower}.</p>
+								<span class="material-icons no-tags-icon"
+									>rate_review</span
+								>
+								<p>
+									No PPR entries found for this {term.memberLower}.
+								</p>
 							</div>
 						{:else}
 							<div class="ia-history-list">
 								{#each pprHistory as ppr}
 									<div class="ia-history-item">
 										<div class="ia-history-info">
-											<span class="ia-history-number">{ppr.ppr_number}</span>
-											<span class="ia-pill {getPPRCategoryClass(ppr.category)}">{formatPPRCategory(ppr.category)}</span>
+											<span class="ia-history-number"
+												>{ppr.ppr_number}</span
+											>
+											<span
+												class="ia-pill {getPPRCategoryClass(
+													ppr.category,
+												)}"
+												>{formatPPRCategory(
+													ppr.category,
+												)}</span
+											>
 										</div>
 										<div class="ia-history-meta">
-											<span style="flex:1; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">{ppr.title}</span>
-											<span class="ia-history-date">{formatDateShort(ppr.created_at)}</span>
+											<span
+												style="flex:1; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;"
+												>{ppr.title}</span
+											>
+											<span class="ia-history-date"
+												>{formatDateShort(
+													ppr.created_at,
+												)}</span
+											>
 										</div>
 										<div class="ia-history-meta">
-											<span style="color: rgba(255,255,255,0.35); font-size: 9px;">By {ppr.author_name}</span>
+											<span
+												style="color: rgba(255,255,255,0.35); font-size: 9px;"
+												>By {ppr.author_name}</span
+											>
 										</div>
 									</div>
 								{/each}
 							</div>
 						{/if}
 					</div>
-
 				{:else if bossPanelTab === "fto"}
 					<div class="boss-section">
 						<label class="boss-label">Field Training History</label>
-						<p class="boss-hint">FTO training assignments for this {term.memberLower}.</p>
+						<p class="boss-hint">
+							FTO training assignments for this {term.memberLower}.
+						</p>
 						{#if ftoHistoryLoading}
 							<p class="boss-hint">Loading...</p>
 						{:else if ftoHistory.length === 0}
 							<div class="no-tags">
-								<span class="material-icons no-tags-icon">school</span>
-								<p>No FTO records found for this {term.memberLower}.</p>
+								<span class="material-icons no-tags-icon"
+									>school</span
+								>
+								<p>
+									No FTO records found for this {term.memberLower}.
+								</p>
 							</div>
 						{:else}
 							<div class="ia-history-list">
 								{#each ftoHistory as record}
 									<div class="ia-history-item">
 										<div class="ia-history-info">
-											<span class="ia-history-number">{record.fto_number}</span>
-											<span class="ia-pill {getFTOStatusClass(record.status)}">{record.status.toUpperCase()}</span>
+											<span class="ia-history-number"
+												>{record.fto_number}</span
+											>
+											<span
+												class="ia-pill {getFTOStatusClass(
+													record.status,
+												)}"
+												>{record.status.toUpperCase()}</span
+											>
 										</div>
 										<div class="ia-history-meta">
 											<span style="flex:1;">
-												{record.trainee_name === `${selectedOfficer?.firstName || ''} ${selectedOfficer?.lastName || ''}`.trim() ? 'Trainer' : 'Trainee'}:
-												{record.trainee_name === `${selectedOfficer?.firstName || ''} ${selectedOfficer?.lastName || ''}`.trim() ? record.trainer_name : record.trainee_name}
+												{record.trainee_name ===
+												`${selectedOfficer?.firstName || ""} ${selectedOfficer?.lastName || ""}`.trim()
+													? "Trainer"
+													: "Trainee"}:
+												{record.trainee_name ===
+												`${selectedOfficer?.firstName || ""} ${selectedOfficer?.lastName || ""}`.trim()
+													? record.trainer_name
+													: record.trainee_name}
 											</span>
 											{#if record.phase_name}
-												<span style="color: rgba(255,255,255,0.5); font-size: 9px;">{record.phase_name}</span>
+												<span
+													style="color: rgba(255,255,255,0.5); font-size: 9px;"
+													>{record.phase_name}</span
+												>
 											{/if}
 										</div>
 										<div class="ia-history-meta">
 											{#if record.dor_count}
-												<span style="color: rgba(255,255,255,0.35); font-size: 9px;">{record.dor_count} DOR{record.dor_count !== 1 ? 's' : ''}</span>
+												<span
+													style="color: rgba(255,255,255,0.35); font-size: 9px;"
+													>{record.dor_count} DOR{record.dor_count !==
+													1
+														? "s"
+														: ""}</span
+												>
 											{/if}
 											{#if record.latest_rating}
-												<span style="color: rgba(255,255,255,0.5); font-size: 9px;">Rating: {record.latest_rating}/5</span>
+												<span
+													style="color: rgba(255,255,255,0.5); font-size: 9px;"
+													>Rating: {record.latest_rating}/5</span
+												>
 											{/if}
-											<span class="ia-history-date">{formatDateShort(record.start_date || record.created_at)}</span>
+											<span class="ia-history-date"
+												>{formatDateShort(
+													record.start_date ||
+														record.created_at,
+												)}</span
+											>
 										</div>
 									</div>
 								{/each}
 							</div>
 						{/if}
 					</div>
-
 				{:else if bossPanelTab === "ia_history"}
 					<div class="boss-section">
 						<label class="boss-label">IA Complaint History</label>
-						<p class="boss-hint">Internal affairs complaints involving this {term.memberLower}.</p>
+						<p class="boss-hint">
+							Internal affairs complaints involving this {term.memberLower}.
+						</p>
 						{#if iaHistoryLoading}
 							<p class="boss-hint">Loading...</p>
 						{:else if iaHistory.length === 0}
 							<div class="no-tags">
-								<span class="material-icons no-tags-icon">verified_user</span>
-								<p>No IA complaints found for this {term.memberLower}.</p>
+								<span class="material-icons no-tags-icon"
+									>verified_user</span
+								>
+								<p>
+									No IA complaints found for this {term.memberLower}.
+								</p>
 							</div>
 						{:else}
 							<div class="ia-history-list">
 								{#each iaHistory as complaint}
 									<div class="ia-history-item">
 										<div class="ia-history-info">
-											<span class="ia-history-number">{complaint.complaint_number}</span>
-											<span class="ia-pill {getIAStatusClass(complaint.status)}">{formatIAStatus(complaint.status)}</span>
+											<span class="ia-history-number"
+												>{complaint.complaint_number}</span
+											>
+											<span
+												class="ia-pill {getIAStatusClass(
+													complaint.status,
+												)}"
+												>{formatIAStatus(
+													complaint.status,
+												)}</span
+											>
 										</div>
 										<div class="ia-history-meta">
-											<span>{formatIAStatus(complaint.category)}</span>
-											<span class="ia-history-date">{complaint.created_at ? formatDate(complaint.created_at) : '-'}</span>
+											<span
+												>{formatIAStatus(
+													complaint.category,
+												)}</span
+											>
+											<span class="ia-history-date"
+												>{complaint.created_at
+													? formatDate(
+															complaint.created_at,
+														)
+													: "-"}</span
+											>
 										</div>
 									</div>
 								{/each}
 							</div>
 						{/if}
 					</div>
-
 				{:else if bossPanelTab === "activity"}
 					<div class="boss-section">
 						<label class="boss-label">Activity Timeline</label>
-						<p class="boss-hint">Recorded changes involving this {term.memberLower}, including rank, callsign, status and more.</p>
+						<p class="boss-hint">
+							Recorded changes involving this {term.memberLower},
+							including rank, callsign, status and more.
+						</p>
 						{#if selectedOfficer?.citizenid}
-							<ActivityTimeline citizenid={selectedOfficer.citizenid} />
+							<ActivityTimeline
+								citizenid={selectedOfficer.citizenid}
+							/>
 						{/if}
 					</div>
 				{/if}
 			</div>
 
 			<div class="modal-footer">
-				<button class="btn-cancel" onclick={closeBossPanel}>Close</button>
+				<button class="btn-cancel" onclick={closeBossPanel}
+					>Close</button
+				>
 				{#if bossPanelTab === "certs"}
 					<button
 						class="btn-save"
 						onclick={saveCertifications}
-						disabled={isSavingCerts || availableTags.length === 0 || actionReason.trim().length < 3}
+						disabled={isSavingCerts ||
+							availableTags.length === 0 ||
+							actionReason.trim().length < 3}
 					>
 						{isSavingCerts ? "Saving..." : "Save Certifications"}
 					</button>
@@ -1613,26 +2715,87 @@
 
 {#if showHireModal}
 	<div class="modal-overlay" onclick={closeHireModal} role="presentation">
-		<div class="modal-container" onclick={(event) => event.stopPropagation()} role="dialog" aria-modal="true" aria-label="Hire officer">
+		<div
+			class="modal-container"
+			onclick={(event) => event.stopPropagation()}
+			role="dialog"
+			aria-modal="true"
+			aria-label="Hire officer"
+		>
 			<div class="modal-header">
-				<div class="modal-title-area"><span class="modal-title">Hire Officer</span><span class="modal-subtitle">Entry rank and academy assignment are applied automatically.</span></div>
-				<button class="modal-close" onclick={closeHireModal}><span class="material-icons">close</span></button>
+				<div class="modal-title-area">
+					<span class="modal-title">Hire Officer</span><span
+						class="modal-subtitle"
+						>Entry rank and academy assignment are applied
+						automatically.</span
+					>
+				</div>
+				<button class="modal-close" onclick={closeHireModal}
+					><span class="material-icons">close</span></button
+				>
 			</div>
 			<div class="modal-body boss-section">
-				<label class="boss-label">Server ID</label><input class="callsign-input" type="number" min="1" bind:value={hireServerId} oninput={() => hireCandidate = null} placeholder="Player server ID" />
+				<label class="boss-label">Server ID</label><input
+					class="callsign-input"
+					type="number"
+					min="1"
+					bind:value={hireServerId}
+					oninput={() => (hireCandidate = null)}
+					placeholder="Player server ID"
+				/>
 				{#if hireCandidate}
-					<div class="hire-candidate"><span class="material-icons">person</span><div><strong>{hireCandidate.name}</strong><small>Server ID {hireCandidate.serverId}</small></div></div>
+					<div class="hire-candidate">
+						<span class="material-icons">person</span>
+						<div>
+							<strong>{hireCandidate.name}</strong><small
+								>Server ID {hireCandidate.serverId}</small
+							>
+						</div>
+					</div>
 				{/if}
-				<label class="boss-label">Permanent Badge Number</label><input class="callsign-input" bind:value={hireBadge} maxlength="20" placeholder="Badge number" />
-				<label class="boss-label">Initial Callsign</label><input class="callsign-input" bind:value={hireCallsign} maxlength="32" placeholder="Callsign" />
-				<label class="boss-label">Written Reason</label><input class="callsign-input" bind:value={hireReason} maxlength="500" placeholder="Hiring reason" />
+				<label class="boss-label">Permanent Badge Number</label><input
+					class="callsign-input"
+					bind:value={hireBadge}
+					maxlength="20"
+					placeholder="Badge number"
+				/>
+				<label class="boss-label">Initial Callsign</label><input
+					class="callsign-input"
+					bind:value={hireCallsign}
+					maxlength="32"
+					placeholder="Callsign"
+				/>
+				<label class="boss-label">Written Reason</label><input
+					class="callsign-input"
+					bind:value={hireReason}
+					maxlength="500"
+					placeholder="Hiring reason"
+				/>
 			</div>
 			<div class="modal-footer">
-				<button class="btn-cancel" onclick={closeHireModal}>Cancel</button>
+				<button class="btn-cancel" onclick={closeHireModal}
+					>Cancel</button
+				>
 				{#if hireCandidate}
-					<button class="btn-save" onclick={hireOfficer} disabled={isSavingBoss || [hireBadge, hireCallsign, hireReason].some((value) => value.trim().length < 3)}>{isSavingBoss ? "Hiring..." : `Hire ${hireCandidate.name}`}</button>
+					<button
+						class="btn-save"
+						onclick={hireOfficer}
+						disabled={isSavingBoss ||
+							[hireBadge, hireCallsign, hireReason].some(
+								(value) => value.trim().length < 3,
+							)}
+						>{isSavingBoss
+							? "Hiring..."
+							: `Hire ${hireCandidate.name}`}</button
+					>
 				{:else}
-					<button class="btn-save" onclick={resolveHireCandidate} disabled={isSavingBoss || !/^\d+$/.test(normalizeServerIdInput(hireServerId))}>{isSavingBoss ? "Finding..." : "Find Player"}</button>
+					<button
+						class="btn-save"
+						onclick={resolveHireCandidate}
+						disabled={isSavingBoss ||
+							!/^\d+$/.test(normalizeServerIdInput(hireServerId))}
+						>{isSavingBoss ? "Finding..." : "Find Player"}</button
+					>
 				{/if}
 			</div>
 		</div>
@@ -1640,30 +2803,81 @@
 {/if}
 
 {#if showTaskForceModal}
-	<div class="modal-overlay" onclick={() => showTaskForceModal = false} role="presentation">
-		<div class="modal-container taskforce-modal" onclick={(event) => event.stopPropagation()} role="dialog" aria-modal="true" aria-label="Task Force Management">
+	<div
+		class="modal-overlay"
+		onclick={() => (showTaskForceModal = false)}
+		role="presentation"
+	>
+		<div
+			class="modal-container taskforce-modal"
+			onclick={(event) => event.stopPropagation()}
+			role="dialog"
+			aria-modal="true"
+			aria-label="Task Force Management"
+		>
 			<div class="modal-header">
 				<div class="modal-title-area">
 					<span class="modal-title">Task Force Management</span>
-					<span class="modal-subtitle">Time-limited, written cross-agency authority for BRPD, EBRSO and LSP.</span>
+					<span class="modal-subtitle"
+						>Time-limited, written cross-agency authority for BRPD,
+						EBRSO and LSP.</span
+					>
 				</div>
 				<div class="taskforce-header-actions">
-					<button class="btn-secondary" onclick={loadTaskForces} disabled={taskForceLoading}>{taskForceLoading ? "Loading..." : "Refresh"}</button>
-					{#if canManageTaskForces}<button class="btn-save" onclick={() => { taskForceCreating = true; selectedTaskForceId = ""; }}>New Task Force</button>{/if}
-					<button class="modal-close" onclick={() => showTaskForceModal = false} aria-label="Close"><span class="material-icons">close</span></button>
+					<button
+						class="btn-secondary"
+						onclick={loadTaskForces}
+						disabled={taskForceLoading}
+						>{taskForceLoading ? "Loading..." : "Refresh"}</button
+					>
+					{#if canManageTaskForces}<button
+							class="btn-save"
+							onclick={() => {
+								taskForceCreating = true;
+								selectedTaskForceId = "";
+							}}>New Task Force</button
+						>{/if}
+					<button
+						class="modal-close"
+						onclick={() => (showTaskForceModal = false)}
+						aria-label="Close"
+						><span class="material-icons">close</span></button
+					>
 				</div>
 			</div>
 
 			<div class="modal-body taskforce-layout">
 				<div class="taskforce-list">
 					{#if taskForces.length === 0}
-						<div class="no-tags"><span class="material-icons no-tags-icon">groups</span><p>No task forces are visible.</p></div>
+						<div class="no-tags">
+							<span class="material-icons no-tags-icon"
+								>groups</span
+							>
+							<p>No task forces are visible.</p>
+						</div>
 					{:else}
 						{#each taskForces as taskForce (taskForce.id)}
-							<button class="taskforce-card" class:selected={taskForce.id === selectedTaskForceId} onclick={() => { selectedTaskForceId = taskForce.id; taskForceCreating = false; }}>
-								<span class="taskforce-card-name">{taskForce.name}</span>
-								<span class="taskforce-card-meta">{taskForce.appointingAgency.toUpperCase()}, {taskForce.status}</span>
-								<span class="taskforce-card-meta">Expires {formatDate(taskForce.expiresAt || "", "")}</span>
+							<button
+								class="taskforce-card"
+								class:selected={taskForce.id ===
+									selectedTaskForceId}
+								onclick={() => {
+									selectedTaskForceId = taskForce.id;
+									taskForceCreating = false;
+								}}
+							>
+								<span class="taskforce-card-name"
+									>{taskForce.name}</span
+								>
+								<span class="taskforce-card-meta"
+									>{taskForce.appointingAgency.toUpperCase()}, {taskForce.status}</span
+								>
+								<span class="taskforce-card-meta"
+									>Expires {formatDate(
+										taskForce.expiresAt || "",
+										"",
+									)}</span
+								>
 							</button>
 						{/each}
 					{/if}
@@ -1673,29 +2887,82 @@
 					{#if taskForceCreating}
 						<div class="taskforce-section">
 							<h3>Create Task Force</h3>
-							<label class="boss-label" for="taskforce-name">Name</label>
-							<input id="taskforce-name" class="callsign-input" bind:value={taskForceName} maxlength="100" placeholder="Task force name" />
-							<label class="boss-label" for="taskforce-expiry">Expiration</label>
-							<input id="taskforce-expiry" class="callsign-input" type="datetime-local" bind:value={taskForceExpiresAt} />
-							<label class="boss-label" for="taskforce-reason">Written Reason</label>
-							<textarea id="taskforce-reason" class="callsign-input taskforce-textarea" bind:value={taskForceReason} maxlength="500" placeholder="Operational purpose and approving authority"></textarea>
+							<label class="boss-label" for="taskforce-name"
+								>Name</label
+							>
+							<input
+								id="taskforce-name"
+								class="callsign-input"
+								bind:value={taskForceName}
+								maxlength="100"
+								placeholder="Task force name"
+							/>
+							<label class="boss-label" for="taskforce-expiry"
+								>Expiration</label
+							>
+							<input
+								id="taskforce-expiry"
+								class="callsign-input"
+								type="datetime-local"
+								bind:value={taskForceExpiresAt}
+							/>
+							<label class="boss-label" for="taskforce-reason"
+								>Written Reason</label
+							>
+							<textarea
+								id="taskforce-reason"
+								class="callsign-input taskforce-textarea"
+								bind:value={taskForceReason}
+								maxlength="500"
+								placeholder="Operational purpose and approving authority"
+							></textarea>
 						</div>
 
 						<div class="taskforce-section">
 							<h3>Participating Agencies</h3>
 							<div class="taskforce-options">
 								{#each [["brpd", "BRPD"], ["ebrso", "EBRSO"], ["lsp", "LSP"]] as agency}
-									<label class="fire-delete-toggle"><input type="checkbox" checked={taskForceAgencies.includes(agency[0])} onchange={() => taskForceAgencies = toggleTaskForceValue(taskForceAgencies, agency[0])} /><span>{agency[1]}</span></label>
+									<label class="fire-delete-toggle"
+										><input
+											type="checkbox"
+											checked={taskForceAgencies.includes(
+												agency[0],
+											)}
+											onchange={() =>
+												(taskForceAgencies =
+													toggleTaskForceValue(
+														taskForceAgencies,
+														agency[0],
+													))}
+										/><span>{agency[1]}</span></label
+									>
 								{/each}
 							</div>
-							<p class="boss-hint">At least two agencies are required.</p>
+							<p class="boss-hint">
+								At least two agencies are required.
+							</p>
 						</div>
 
 						<div class="taskforce-section">
 							<h3>Authorized Actions</h3>
-							<div class="taskforce-options taskforce-permissions">
+							<div
+								class="taskforce-options taskforce-permissions"
+							>
 								{#each taskForcePermissionOptions as permission}
-									<label class="fire-delete-toggle"><input type="checkbox" checked={taskForcePermissions.includes(permission)} onchange={() => taskForcePermissions = toggleTaskForceValue(taskForcePermissions, permission)} /><span>{permission}</span></label>
+									<label class="fire-delete-toggle"
+										><input
+											type="checkbox"
+											checked={taskForcePermissions.includes(
+												permission,
+											)}
+											onchange={() =>
+												(taskForcePermissions =
+													toggleTaskForceValue(
+														taskForcePermissions,
+														permission,
+													))}
+										/><span>{permission}</span></label
+									>
 								{/each}
 							</div>
 						</div>
@@ -1704,37 +2971,115 @@
 							<h3>Record Scope</h3>
 							<div class="taskforce-options">
 								{#each ["cases", "reports", "incidents"] as recordType}
-									<label class="fire-delete-toggle"><input type="checkbox" checked={taskForceRecordTypes.includes(recordType)} onchange={() => taskForceRecordTypes = toggleTaskForceValue(taskForceRecordTypes, recordType)} /><span>{recordType}</span></label>
+									<label class="fire-delete-toggle"
+										><input
+											type="checkbox"
+											checked={taskForceRecordTypes.includes(
+												recordType,
+											)}
+											onchange={() =>
+												(taskForceRecordTypes =
+													toggleTaskForceValue(
+														taskForceRecordTypes,
+														recordType,
+													))}
+										/><span>{recordType}</span></label
+									>
 								{/each}
 							</div>
 							<div class="taskforce-id-grid">
-								<input class="callsign-input" bind:value={taskForceCaseIds} placeholder="Specific case IDs, comma separated" />
-								<input class="callsign-input" bind:value={taskForceReportIds} placeholder="Specific report IDs, comma separated" />
-								<input class="callsign-input" bind:value={taskForceIncidentIds} placeholder="Specific incident IDs, comma separated" />
+								<input
+									class="callsign-input"
+									bind:value={taskForceCaseIds}
+									placeholder="Specific case IDs, comma separated"
+								/>
+								<input
+									class="callsign-input"
+									bind:value={taskForceReportIds}
+									placeholder="Specific report IDs, comma separated"
+								/>
+								<input
+									class="callsign-input"
+									bind:value={taskForceIncidentIds}
+									placeholder="Specific incident IDs, comma separated"
+								/>
 							</div>
 						</div>
 
 						<div class="taskforce-actions">
-							<button class="btn-cancel" onclick={() => taskForceCreating = false}>Cancel</button>
-							<button class="btn-save" onclick={createTaskForce} disabled={taskForceSaving || taskForceName.trim().length < 3 || taskForceReason.trim().length < 3 || !taskForceExpiresAt || taskForceAgencies.length < 2 || taskForcePermissions.length === 0}>{taskForceSaving ? "Creating..." : "Create Task Force"}</button>
+							<button
+								class="btn-cancel"
+								onclick={() => (taskForceCreating = false)}
+								>Cancel</button
+							>
+							<button
+								class="btn-save"
+								onclick={createTaskForce}
+								disabled={taskForceSaving ||
+									taskForceName.trim().length < 3 ||
+									taskForceReason.trim().length < 3 ||
+									!taskForceExpiresAt ||
+									taskForceAgencies.length < 2 ||
+									taskForcePermissions.length === 0}
+								>{taskForceSaving
+									? "Creating..."
+									: "Create Task Force"}</button
+							>
 						</div>
 					{:else if selectedTaskForce}
 						<div class="taskforce-summary">
-							<div><h3>{selectedTaskForce.name}</h3><p>{selectedTaskForce.reason}</p></div>
-							<span class="status-pill {selectedTaskForce.status === 'active' ? 'on-duty' : 'off-duty'}">{selectedTaskForce.status}</span>
+							<div>
+								<h3>{selectedTaskForce.name}</h3>
+								<p>{selectedTaskForce.reason}</p>
+							</div>
+							<span
+								class="status-pill {selectedTaskForce.status ===
+								'active'
+									? 'on-duty'
+									: 'off-duty'}"
+								>{selectedTaskForce.status}</span
+							>
 						</div>
 						<div class="taskforce-scope-summary">
-							<span><strong>Agencies:</strong> {(selectedTaskForce.scope.agencies || []).map((agency) => agency.toUpperCase()).join(", ")}</span>
-							<span><strong>Expires:</strong> {formatDate(selectedTaskForce.expiresAt || "", "")}</span>
-							<span><strong>Records:</strong> {(selectedTaskForce.scope.recordTypes || []).join(", ") || "Specific records only"}</span>
-							<span><strong>Permissions:</strong> {(selectedTaskForce.scope.permissions || []).join(", ")}</span>
+							<span
+								><strong>Agencies:</strong>
+								{(selectedTaskForce.scope.agencies || [])
+									.map((agency) => agency.toUpperCase())
+									.join(", ")}</span
+							>
+							<span
+								><strong>Expires:</strong>
+								{formatDate(
+									selectedTaskForce.expiresAt || "",
+									"",
+								)}</span
+							>
+							<span
+								><strong>Records:</strong>
+								{(
+									selectedTaskForce.scope.recordTypes || []
+								).join(", ") || "Specific records only"}</span
+							>
+							<span
+								><strong>Permissions:</strong>
+								{(
+									selectedTaskForce.scope.permissions || []
+								).join(", ")}</span
+							>
 						</div>
 
 						<div class="taskforce-section">
 							<h3>Members</h3>
 							<div class="taskforce-members">
 								{#each selectedTaskForce.members || [] as member (member.citizenid + member.startsAt)}
-									<div class="taskforce-member"><span>{member.callsign}, {member.citizenid}</span><span>{member.agency.toUpperCase()}, {member.role}, {member.status}</span></div>
+									<div class="taskforce-member">
+										<span
+											>{member.callsign}, {member.citizenid}</span
+										><span
+											>{member.agency.toUpperCase()}, {member.role},
+											{member.status}</span
+										>
+									</div>
 								{/each}
 							</div>
 						</div>
@@ -1743,32 +3088,115 @@
 							<div class="taskforce-section">
 								<h3>Appoint or Change Member</h3>
 								<div class="taskforce-form-grid">
-									<select class="callsign-input" bind:value={taskForceMemberCitizenId}>
+									<select
+										class="callsign-input"
+										bind:value={taskForceMemberCitizenId}
+									>
 										<option value="">Select officer</option>
 										{#each officers.filter((officer) => officer.citizenid && (selectedTaskForce?.scope.agencies || []).includes(officer.department || "")) as officer (officer.citizenid)}
-											<option value={officer.citizenid}>{officer.callsign}, {officer.firstName} {officer.lastName}, {(officer.department || "").toUpperCase()}</option>
+											<option value={officer.citizenid}
+												>{officer.callsign}, {officer.firstName}
+												{officer.lastName}, {(
+													officer.department || ""
+												).toUpperCase()}</option
+											>
 										{/each}
 									</select>
-									<select class="callsign-input" bind:value={taskForceMemberRole}><option value="commander">Commander</option><option value="supervisor">Supervisor</option><option value="member">Member</option><option value="analyst">Analyst</option></select>
-									<select class="callsign-input" bind:value={taskForceMemberStatus}><option value="active">Active</option><option value="suspended">Suspended</option><option value="revoked">Revoke</option></select>
-									<input class="callsign-input" type="datetime-local" bind:value={taskForceMemberExpiresAt} disabled={taskForceMemberStatus === "revoked"} />
+									<select
+										class="callsign-input"
+										bind:value={taskForceMemberRole}
+										><option value="commander"
+											>Commander</option
+										><option value="supervisor"
+											>Supervisor</option
+										><option value="member">Member</option
+										><option value="analyst">Analyst</option
+										></select
+									>
+									<select
+										class="callsign-input"
+										bind:value={taskForceMemberStatus}
+										><option value="active">Active</option
+										><option value="suspended"
+											>Suspended</option
+										><option value="revoked">Revoke</option
+										></select
+									>
+									<input
+										class="callsign-input"
+										type="datetime-local"
+										bind:value={taskForceMemberExpiresAt}
+										disabled={taskForceMemberStatus ===
+											"revoked"}
+									/>
 								</div>
-								<label class="boss-label" for="taskforce-member-reason">Written Reason</label>
-								<input id="taskforce-member-reason" class="callsign-input" bind:value={taskForceMemberReason} maxlength="500" placeholder="Appointment, suspension or removal reason" />
-								<button class="btn-save" onclick={saveTaskForceMember} disabled={taskForceSaving || !taskForceMemberCitizenId || taskForceMemberReason.trim().length < 3 || ((taskForceMemberStatus === "active" || taskForceMemberStatus === "suspended") && !taskForceMemberExpiresAt)}>Save Membership</button>
+								<label
+									class="boss-label"
+									for="taskforce-member-reason"
+									>Written Reason</label
+								>
+								<input
+									id="taskforce-member-reason"
+									class="callsign-input"
+									bind:value={taskForceMemberReason}
+									maxlength="500"
+									placeholder="Appointment, suspension or removal reason"
+								/>
+								<button
+									class="btn-save"
+									onclick={saveTaskForceMember}
+									disabled={taskForceSaving ||
+										!taskForceMemberCitizenId ||
+										taskForceMemberReason.trim().length <
+											3 ||
+										((taskForceMemberStatus === "active" ||
+											taskForceMemberStatus ===
+												"suspended") &&
+											!taskForceMemberExpiresAt)}
+									>Save Membership</button
+								>
 							</div>
 
 							<div class="taskforce-section">
 								<h3>Task Force Status</h3>
 								<div class="taskforce-form-grid status-grid">
-									<select class="callsign-input" bind:value={taskForceStatus}><option value="active">Active</option><option value="suspended">Suspended</option><option value="closed">Closed</option><option value="expired">Expired</option></select>
-									<input class="callsign-input" bind:value={taskForceStatusReason} maxlength="500" placeholder="Written Reason" />
-									<button class="btn-save" onclick={saveTaskForceStatus} disabled={taskForceSaving || taskForceStatusReason.trim().length < 3}>Update Status</button>
+									<select
+										class="callsign-input"
+										bind:value={taskForceStatus}
+										><option value="active">Active</option
+										><option value="suspended"
+											>Suspended</option
+										><option value="closed">Closed</option
+										><option value="expired">Expired</option
+										></select
+									>
+									<input
+										class="callsign-input"
+										bind:value={taskForceStatusReason}
+										maxlength="500"
+										placeholder="Written Reason"
+									/>
+									<button
+										class="btn-save"
+										onclick={saveTaskForceStatus}
+										disabled={taskForceSaving ||
+											taskForceStatusReason.trim()
+												.length < 3}
+										>Update Status</button
+									>
 								</div>
 							</div>
 						{/if}
 					{:else}
-						<div class="no-tags"><span class="material-icons no-tags-icon">policy</span><p>Select a task force to review its scope and membership.</p></div>
+						<div class="no-tags">
+							<span class="material-icons no-tags-icon"
+								>policy</span
+							>
+							<p>
+								Select a task force to review its scope and
+								membership.
+							</p>
+						</div>
 					{/if}
 				</div>
 			</div>
@@ -2119,8 +3547,12 @@
 	}
 
 	@keyframes spin {
-		0% { transform: rotate(0deg); }
-		100% { transform: rotate(360deg); }
+		0% {
+			transform: rotate(0deg);
+		}
+		100% {
+			transform: rotate(360deg);
+		}
 	}
 
 	/* Scrollbars */
@@ -2165,28 +3597,141 @@
 		box-shadow: 0 20px 60px rgba(0, 0, 0, 0.5);
 	}
 
-	.taskforce-modal { width: min(980px, 92vw); max-height: 88vh; }
-	.taskforce-header-actions { display: flex; align-items: center; gap: 8px; }
-	.taskforce-layout { display: grid; grid-template-columns: 240px 1fr; padding: 0; min-height: 620px; }
-	.taskforce-list { border-right: 1px solid rgba(255, 255, 255, 0.06); overflow-y: auto; padding: 8px; }
-	.taskforce-card { width: 100%; display: flex; flex-direction: column; gap: 3px; text-align: left; background: transparent; color: inherit; border: 1px solid transparent; border-radius: 5px; padding: 10px; cursor: pointer; margin-bottom: 6px; }
-	.taskforce-card:hover, .taskforce-card.selected { background: rgba(var(--accent-rgb), 0.08); border-color: rgba(var(--accent-rgb), 0.18); }
-	.taskforce-card-name { font-size: 11px; font-weight: 650; }
-	.taskforce-card-meta { font-size: 9px; color: rgba(255, 255, 255, 0.35); text-transform: uppercase; letter-spacing: 0.35px; }
-	.taskforce-detail { overflow-y: auto; padding: 16px; }
-	.taskforce-section { display: flex; flex-direction: column; gap: 8px; padding: 0 0 16px; margin-bottom: 16px; border-bottom: 1px solid rgba(255, 255, 255, 0.06); }
-	.taskforce-section h3, .taskforce-summary h3 { margin: 0; font-size: 12px; color: rgba(255, 255, 255, 0.82); }
-	.taskforce-textarea { min-height: 68px; resize: vertical; }
-	.taskforce-options { display: flex; gap: 12px; flex-wrap: wrap; }
-	.taskforce-permissions { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 7px 12px; }
-	.taskforce-id-grid, .taskforce-form-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
-	.taskforce-actions { display: flex; justify-content: flex-end; gap: 8px; }
-	.taskforce-summary { display: flex; justify-content: space-between; gap: 16px; align-items: flex-start; margin-bottom: 12px; }
-	.taskforce-summary p { margin: 4px 0 0; font-size: 10px; color: rgba(255, 255, 255, 0.4); }
-	.taskforce-scope-summary { display: grid; gap: 6px; background: rgba(255, 255, 255, 0.025); border: 1px solid rgba(255, 255, 255, 0.05); border-radius: 5px; padding: 10px; margin-bottom: 16px; font-size: 10px; color: rgba(255, 255, 255, 0.48); overflow-wrap: anywhere; }
-	.taskforce-members { display: grid; gap: 5px; max-height: 150px; overflow-y: auto; }
-	.taskforce-member { display: flex; justify-content: space-between; gap: 12px; padding: 7px 9px; background: rgba(255, 255, 255, 0.025); border-radius: 4px; font-size: 10px; color: rgba(255, 255, 255, 0.55); }
-	.status-grid { grid-template-columns: 160px 1fr auto; }
+	.taskforce-modal {
+		width: min(980px, 92vw);
+		max-height: 88vh;
+	}
+	.taskforce-header-actions {
+		display: flex;
+		align-items: center;
+		gap: 8px;
+	}
+	.taskforce-layout {
+		display: grid;
+		grid-template-columns: 240px 1fr;
+		padding: 0;
+		min-height: 620px;
+	}
+	.taskforce-list {
+		border-right: 1px solid rgba(255, 255, 255, 0.06);
+		overflow-y: auto;
+		padding: 8px;
+	}
+	.taskforce-card {
+		width: 100%;
+		display: flex;
+		flex-direction: column;
+		gap: 3px;
+		text-align: left;
+		background: transparent;
+		color: inherit;
+		border: 1px solid transparent;
+		border-radius: 5px;
+		padding: 10px;
+		cursor: pointer;
+		margin-bottom: 6px;
+	}
+	.taskforce-card:hover,
+	.taskforce-card.selected {
+		background: rgba(var(--accent-rgb), 0.08);
+		border-color: rgba(var(--accent-rgb), 0.18);
+	}
+	.taskforce-card-name {
+		font-size: 11px;
+		font-weight: 650;
+	}
+	.taskforce-card-meta {
+		font-size: 9px;
+		color: rgba(255, 255, 255, 0.35);
+		text-transform: uppercase;
+		letter-spacing: 0.35px;
+	}
+	.taskforce-detail {
+		overflow-y: auto;
+		padding: 16px;
+	}
+	.taskforce-section {
+		display: flex;
+		flex-direction: column;
+		gap: 8px;
+		padding: 0 0 16px;
+		margin-bottom: 16px;
+		border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+	}
+	.taskforce-section h3,
+	.taskforce-summary h3 {
+		margin: 0;
+		font-size: 12px;
+		color: rgba(255, 255, 255, 0.82);
+	}
+	.taskforce-textarea {
+		min-height: 68px;
+		resize: vertical;
+	}
+	.taskforce-options {
+		display: flex;
+		gap: 12px;
+		flex-wrap: wrap;
+	}
+	.taskforce-permissions {
+		display: grid;
+		grid-template-columns: repeat(3, minmax(0, 1fr));
+		gap: 7px 12px;
+	}
+	.taskforce-id-grid,
+	.taskforce-form-grid {
+		display: grid;
+		grid-template-columns: repeat(2, minmax(0, 1fr));
+		gap: 8px;
+	}
+	.taskforce-actions {
+		display: flex;
+		justify-content: flex-end;
+		gap: 8px;
+	}
+	.taskforce-summary {
+		display: flex;
+		justify-content: space-between;
+		gap: 16px;
+		align-items: flex-start;
+		margin-bottom: 12px;
+	}
+	.taskforce-summary p {
+		margin: 4px 0 0;
+		font-size: 10px;
+		color: rgba(255, 255, 255, 0.4);
+	}
+	.taskforce-scope-summary {
+		display: grid;
+		gap: 6px;
+		background: rgba(255, 255, 255, 0.025);
+		border: 1px solid rgba(255, 255, 255, 0.05);
+		border-radius: 5px;
+		padding: 10px;
+		margin-bottom: 16px;
+		font-size: 10px;
+		color: rgba(255, 255, 255, 0.48);
+		overflow-wrap: anywhere;
+	}
+	.taskforce-members {
+		display: grid;
+		gap: 5px;
+		max-height: 150px;
+		overflow-y: auto;
+	}
+	.taskforce-member {
+		display: flex;
+		justify-content: space-between;
+		gap: 12px;
+		padding: 7px 9px;
+		background: rgba(255, 255, 255, 0.025);
+		border-radius: 4px;
+		font-size: 10px;
+		color: rgba(255, 255, 255, 0.55);
+	}
+	.status-grid {
+		grid-template-columns: 160px 1fr auto;
+	}
 
 	.modal-header {
 		display: flex;
@@ -2456,9 +4001,17 @@
 		color: rgba(255, 255, 255, 0.85);
 	}
 
-	.hire-candidate .material-icons { color: rgba(var(--accent-text-rgb), 0.8); }
-	.hire-candidate div { display: flex; flex-direction: column; gap: 2px; }
-	.hire-candidate small { color: rgba(255, 255, 255, 0.45); }
+	.hire-candidate .material-icons {
+		color: rgba(var(--accent-text-rgb), 0.8);
+	}
+	.hire-candidate div {
+		display: flex;
+		flex-direction: column;
+		gap: 2px;
+	}
+	.hire-candidate small {
+		color: rgba(255, 255, 255, 0.45);
+	}
 
 	.boss-hint {
 		font-size: 10px;
@@ -2498,6 +4051,16 @@
 	.grade-option:hover {
 		background: rgba(255, 255, 255, 0.03);
 		border-color: rgba(255, 255, 255, 0.08);
+	}
+
+	.grade-option:disabled {
+		opacity: 0.55;
+		cursor: not-allowed;
+	}
+
+	.grade-option:disabled:hover {
+		background: transparent;
+		border-color: rgba(255, 255, 255, 0.05);
 	}
 
 	.grade-option.selected {
@@ -2570,6 +4133,88 @@
 
 	.callsign-input::placeholder {
 		color: rgba(255, 255, 255, 0.15);
+	}
+
+	.assignment-management {
+		display: flex;
+		flex-direction: column;
+		gap: 12px;
+	}
+
+	.assignment-card,
+	.assignment-reason {
+		display: flex;
+		flex-direction: column;
+		gap: 8px;
+		padding: 12px;
+		background: rgba(255, 255, 255, 0.02);
+		border: 1px solid rgba(255, 255, 255, 0.07);
+		border-radius: 5px;
+	}
+
+	.assignment-card-heading {
+		display: flex;
+		align-items: flex-start;
+		justify-content: space-between;
+		gap: 16px;
+	}
+
+	.assignment-current {
+		flex-shrink: 0;
+		padding: 4px 8px;
+		border-radius: 3px;
+		background: rgba(var(--accent-rgb), 0.08);
+		border: 1px solid rgba(var(--accent-rgb), 0.16);
+		color: rgba(var(--accent-text-rgb), 0.85);
+		font-size: 10px;
+		font-weight: 600;
+	}
+
+	.assignment-action-row {
+		display: grid;
+		grid-template-columns: minmax(0, 1fr) auto;
+		gap: 8px;
+		align-items: center;
+	}
+
+	.assignment-role-list {
+		display: grid;
+		grid-template-columns: repeat(2, minmax(0, 1fr));
+		gap: 6px;
+	}
+
+	.assignment-role {
+		display: flex;
+		align-items: center;
+		justify-content: space-between;
+		gap: 8px;
+		padding: 7px 9px;
+		border: 1px solid rgba(255, 255, 255, 0.07);
+		border-radius: 3px;
+		color: rgba(255, 255, 255, 0.75);
+		font-size: 11px;
+	}
+
+	.assignment-remove {
+		background: transparent;
+		border: none;
+		color: rgba(239, 68, 68, 0.8);
+		font-size: 10px;
+		font-weight: 600;
+		cursor: pointer;
+	}
+
+	.assignment-remove:disabled {
+		opacity: 0.35;
+		cursor: not-allowed;
+	}
+
+	.assignment-empty {
+		grid-column: 1 / -1;
+		margin: 0;
+		padding: 8px 0;
+		color: rgba(255, 255, 255, 0.35);
+		font-size: 11px;
 	}
 
 	/* Fire Button */
@@ -2707,16 +4352,44 @@
 		text-transform: uppercase;
 		letter-spacing: 0.3px;
 	}
-	.pill-blue { background: rgba(59, 130, 246, 0.2); color: rgb(147, 197, 253); }
-	.pill-orange { background: rgba(245, 158, 11, 0.2); color: rgb(253, 224, 71); }
-	.pill-yellow { background: rgba(234, 179, 8, 0.2); color: rgb(253, 224, 71); }
-	.pill-red { background: rgba(239, 68, 68, 0.2); color: rgb(252, 165, 165); }
-	.pill-green { background: rgba(16, 185, 129, 0.2); color: rgb(167, 243, 208); }
-	.pill-gray { background: rgba(107, 114, 128, 0.2); color: rgb(156, 163, 175); }
-	.status-active { background: rgba(59, 130, 246, 0.2); color: rgb(147, 197, 253); }
-	.status-completed { background: rgba(16, 185, 129, 0.2); color: rgb(167, 243, 208); }
-	.status-failed { background: rgba(239, 68, 68, 0.2); color: rgb(252, 165, 165); }
-	.status-suspended { background: rgba(245, 158, 11, 0.2); color: rgb(253, 224, 71); }
-
-
+	.pill-blue {
+		background: rgba(59, 130, 246, 0.2);
+		color: rgb(147, 197, 253);
+	}
+	.pill-orange {
+		background: rgba(245, 158, 11, 0.2);
+		color: rgb(253, 224, 71);
+	}
+	.pill-yellow {
+		background: rgba(234, 179, 8, 0.2);
+		color: rgb(253, 224, 71);
+	}
+	.pill-red {
+		background: rgba(239, 68, 68, 0.2);
+		color: rgb(252, 165, 165);
+	}
+	.pill-green {
+		background: rgba(16, 185, 129, 0.2);
+		color: rgb(167, 243, 208);
+	}
+	.pill-gray {
+		background: rgba(107, 114, 128, 0.2);
+		color: rgb(156, 163, 175);
+	}
+	.status-active {
+		background: rgba(59, 130, 246, 0.2);
+		color: rgb(147, 197, 253);
+	}
+	.status-completed {
+		background: rgba(16, 185, 129, 0.2);
+		color: rgb(167, 243, 208);
+	}
+	.status-failed {
+		background: rgba(239, 68, 68, 0.2);
+		color: rgb(252, 165, 165);
+	}
+	.status-suspended {
+		background: rgba(245, 158, 11, 0.2);
+		color: rgb(253, 224, 71);
+	}
 </style>

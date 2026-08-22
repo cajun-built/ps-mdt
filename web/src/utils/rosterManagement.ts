@@ -38,9 +38,10 @@ export function getPromotionActionState(
 		};
 	}
 
-	const label = selectedGrade === null
-		? "Select a Rank"
-		: `Set Rank to ${selectedRankName || selectedGrade}`;
+	const label =
+		selectedGrade === null
+			? "Select a Rank"
+			: `Set Rank to ${selectedRankName || selectedGrade}`;
 
 	if (isSaving) {
 		return {
@@ -76,17 +77,26 @@ export function getPromotionActionState(
 const personnelActionMessages: Record<string, string> = {
 	assignment_required:
 		"Personnel assignment required. Another authorized command member or an administrator must grant it.",
-	rank_insufficient: "Your current rank does not authorize this personnel action.",
+	rank_insufficient:
+		"Your current rank does not authorize this personnel action.",
 	target_rank_denied:
 		"You can only change the rank of officers below you, and the new rank must remain below yours.",
 	self_action_denied: "You cannot change your own rank through the MDT.",
 	agency_scope_denied: "You can only manage officers in your own agency.",
+	agency_head_admin_only:
+		"Agency heads are appointed by an administrator and cannot be selected in the MDT.",
+	agency_head_exists:
+		"This agency already has an active head. Only one agency head is permitted.",
 	reason_required: "Enter a written reason of at least 3 characters.",
 	configuration_invalid: "That rank is not valid for this officer's agency.",
-	identity_unavailable: "The officer's authoritative LEO personnel record could not be found.",
-	employment_restricted: "This personnel action is unavailable while your employment is restricted.",
-	employment_inactive: "This personnel action requires active employment status.",
-	service_unavailable: "The rank update could not be completed. No changes were saved.",
+	identity_unavailable:
+		"The officer's authoritative LEO personnel record could not be found.",
+	employment_restricted:
+		"This personnel action is unavailable while your employment is restricted.",
+	employment_inactive:
+		"This personnel action requires active employment status.",
+	service_unavailable:
+		"The rank update could not be completed. No changes were saved.",
 	duplicate_action: "This personnel action was already processed.",
 };
 

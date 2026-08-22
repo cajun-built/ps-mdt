@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
 import test from "node:test";
 
 import * as rosterManagement from "../src/utils/rosterManagement.ts";
@@ -13,11 +14,14 @@ test("server ID input accepts the numeric value produced by a number field", () 
 });
 
 test("promotion action explains each required step", () => {
-	assert.deepEqual(getPromotionActionState(null, "", undefined, false, false), {
-		disabled: true,
-		label: "Select a Rank",
-		hint: "Select the officer's new rank.",
-	});
+	assert.deepEqual(
+		getPromotionActionState(null, "", undefined, false, false),
+		{
+			disabled: true,
+			label: "Select a Rank",
+			hint: "Select the officer's new rank.",
+		},
+	);
 
 	assert.deepEqual(getPromotionActionState(4, "", "Sergeant", false, false), {
 		disabled: true,
@@ -25,17 +29,47 @@ test("promotion action explains each required step", () => {
 		hint: "Enter a written reason of at least 3 characters.",
 	});
 
-	assert.deepEqual(getPromotionActionState(4, "Promotion approved", "Sergeant", false, false), {
-		disabled: false,
-		label: "Set Rank to Sergeant",
-		hint: "Ready to update this officer's rank.",
-	});
+	assert.deepEqual(
+		getPromotionActionState(
+			4,
+			"Promotion approved",
+			"Sergeant",
+			false,
+			false,
+		),
+		{
+			disabled: false,
+			label: "Set Rank to Sergeant",
+			hint: "Ready to update this officer's rank.",
+		},
+	);
 });
 
 test("promotion action remains disabled while ranks load or a save is running", () => {
-	assert.equal(getPromotionActionState(null, "", undefined, false, true).label, "Loading Ranks...");
-	assert.equal(getPromotionActionState(4, "Promotion approved", "Sergeant", true, false).label, "Updating Rank...");
-	assert.equal(getPromotionActionState(4, "Promotion approved", "Sergeant", true, false).disabled, true);
+	assert.equal(
+		getPromotionActionState(null, "", undefined, false, true).label,
+		"Loading Ranks...",
+	);
+	assert.equal(
+		getPromotionActionState(
+			4,
+			"Promotion approved",
+			"Sergeant",
+			true,
+			false,
+		).label,
+		"Updating Rank...",
+	);
+	assert.equal(
+		getPromotionActionState(
+			4,
+			"Promotion approved",
+			"Sergeant",
+			true,
+			false,
+		).disabled,
+		true,
+	);
 });
 
 test("personnel denial codes are readable and actionable", () => {
@@ -47,7 +81,10 @@ test("personnel denial codes are readable and actionable", () => {
 		personnelActionMessage("target_rank_denied"),
 		"You can only change the rank of officers below you, and the new rank must remain below yours.",
 	);
-	assert.equal(personnelActionMessage("unexpected_backend_code"), "unexpected_backend_code");
+	assert.equal(
+		personnelActionMessage("unexpected_backend_code"),
+		"unexpected_backend_code",
+	);
 });
 
 test("rank requests are serialized while unrelated roster data loads concurrently", async () => {
@@ -60,7 +97,10 @@ test("rank requests are serialized while unrelated roster data loads concurrentl
 	const loadRank = async (name: string) => {
 		events.push(`${name}:start`);
 		activeRankRequests += 1;
-		maximumActiveRankRequests = Math.max(maximumActiveRankRequests, activeRankRequests);
+		maximumActiveRankRequests = Math.max(
+			maximumActiveRankRequests,
+			activeRankRequests,
+		);
 		await Promise.resolve();
 		activeRankRequests -= 1;
 		events.push(`${name}:end`);
@@ -77,6 +117,26 @@ test("rank requests are serialized while unrelated roster data loads concurrentl
 	);
 
 	assert.equal(maximumActiveRankRequests, 1);
-	assert.ok(events.indexOf("tags:start") < events.indexOf("current-ranks:end"));
-	assert.ok(events.indexOf("current-ranks:end") < events.indexOf("transfer-ranks:start"));
+	assert.ok(
+		events.indexOf("tags:start") < events.indexOf("current-ranks:end"),
+	);
+	assert.ok(
+		events.indexOf("current-ranks:end") <
+			events.indexOf("transfer-ranks:start"),
+	);
+});
+
+test("assignment management uses explicit primary placement and additional role actions", () => {
+	const rosterSource = readFileSync(
+		new URL("../src/pages/Roster.svelte", import.meta.url),
+		"utf8",
+	);
+
+	assert.match(rosterSource, /bossPanelTab === "assignments"/);
+	assert.match(rosterSource, /Primary Assignment/);
+	assert.match(rosterSource, /Change Primary Assignment/);
+	assert.match(rosterSource, /Additional Roles/);
+	assert.match(rosterSource, /Add Additional Role/);
+	assert.doesNotMatch(rosterSource, /bind:checked=\{assignmentPrimary\}/);
+	assert.doesNotMatch(rosterSource, /bind:checked=\{assignmentActive\}/);
 });

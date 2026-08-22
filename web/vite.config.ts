@@ -7,6 +7,7 @@ export default defineConfig({
 	plugins: [svelte(), tailwindcss()],
 	base: "./",
 	resolve: {
+		preserveSymlinks: true,
 		alias: {
 			"@/": "/src/",
 			$lib: "/src/lib",
