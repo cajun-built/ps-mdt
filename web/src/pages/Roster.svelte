@@ -45,6 +45,7 @@
 	import {
 		getPromotionActionState,
 		loadRosterManagementData,
+		normalizeServerIdInput,
 		personnelActionMessage,
 	} from "../utils/rosterManagement";
 	import type { AuthService } from "../services/authService.svelte";
@@ -174,7 +175,7 @@
 	let restrictionActive = $state(true);
 	let restrictionExpiresAt = $state("");
 	let showHireModal = $state(false);
-	let hireServerId = $state("");
+	let hireServerId = $state<string | number>("");
 	let hireCandidate = $state<{ serverId: number; citizenid: string; name: string } | null>(null);
 	let hireBadge = $state("");
 	let hireCallsign = $state("");
@@ -870,11 +871,12 @@
 	}
 
 	async function resolveHireCandidate() {
-		if (!/^\d+$/.test(hireServerId.trim())) return;
+		const serverId = normalizeServerIdInput(hireServerId);
+		if (!/^\d+$/.test(serverId)) return;
 		isSavingBoss = true;
 		try {
 			const response = await fetchNui<{ success: boolean; message?: string; candidate?: { serverId: number; citizenid: string; name: string } }>(NUI_EVENTS.ROSTER.RESOLVE_HIRE_CANDIDATE, {
-				serverId: Number(hireServerId),
+				serverId: Number(serverId),
 			});
 			if (response?.success && response.candidate) hireCandidate = response.candidate;
 			else globalNotifications.error(response?.message || "Player could not be verified");
@@ -1630,7 +1632,7 @@
 				{#if hireCandidate}
 					<button class="btn-save" onclick={hireOfficer} disabled={isSavingBoss || [hireBadge, hireCallsign, hireReason].some((value) => value.trim().length < 3)}>{isSavingBoss ? "Hiring..." : `Hire ${hireCandidate.name}`}</button>
 				{:else}
-					<button class="btn-save" onclick={resolveHireCandidate} disabled={isSavingBoss || !/^\d+$/.test(hireServerId.trim())}>{isSavingBoss ? "Finding..." : "Find Player"}</button>
+					<button class="btn-save" onclick={resolveHireCandidate} disabled={isSavingBoss || !/^\d+$/.test(normalizeServerIdInput(hireServerId))}>{isSavingBoss ? "Finding..." : "Find Player"}</button>
 				{/if}
 			</div>
 		</div>

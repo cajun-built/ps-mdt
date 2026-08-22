@@ -5,6 +5,13 @@ import * as rosterManagement from "../src/utils/rosterManagement.ts";
 
 const { getPromotionActionState, personnelActionMessage } = rosterManagement;
 
+test("server ID input accepts the numeric value produced by a number field", () => {
+	const normalizeServerIdInput = rosterManagement.normalizeServerIdInput;
+	assert.equal(typeof normalizeServerIdInput, "function");
+	assert.equal(normalizeServerIdInput?.(24), "24");
+	assert.equal(normalizeServerIdInput?.(" 24 "), "24");
+});
+
 test("promotion action explains each required step", () => {
 	assert.deepEqual(getPromotionActionState(null, "", undefined, false, false), {
 		disabled: true,

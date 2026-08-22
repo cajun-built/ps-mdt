@@ -4,6 +4,11 @@ export interface PromotionActionState {
 	hint: string;
 }
 
+export function normalizeServerIdInput(value: unknown): string {
+	if (typeof value !== "string" && typeof value !== "number") return "";
+	return String(value).trim();
+}
+
 export async function loadRosterManagementData(
 	loadTags: () => Promise<unknown>,
 	loadCurrentRanks: () => Promise<unknown>,
