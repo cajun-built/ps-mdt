@@ -15,6 +15,14 @@
     import ContentArea from "../components/ContentArea.svelte";
     import RadioPTT from "../components/RadioPTT.svelte";
     import {resolveDepartmentBrand} from "../utils/departmentBranding";
+    import {
+        DEFAULT_UI_ZOOM,
+        getUiZoomLayout,
+        normalizeUiZoom,
+        readStoredUiZoom,
+        UI_PREFERENCES_STORAGE_KEY,
+        UI_ZOOM_EVENT,
+    } from "../utils/uiZoom";
     import type {AuthUpdateData} from "@/interfaces/IUser";
 
     const authService = createAuthService();
@@ -27,12 +35,23 @@
         authService.jobType,
     ));
     let activeComponent = $derived(tabService.getActiveComponent());
+    let uiZoom = $state(DEFAULT_UI_ZOOM);
+    let uiZoomLayout = $derived(getUiZoomLayout(uiZoom));
 
     onMount(() => {
+        uiZoom = readStoredUiZoom(localStorage.getItem(UI_PREFERENCES_STORAGE_KEY));
+
+        const handleUiZoom = (event: Event) => {
+            uiZoom = normalizeUiZoom((event as CustomEvent<number>).detail);
+        };
+        window.addEventListener(UI_ZOOM_EVENT, handleUiZoom);
+
         authService.checkAuth();
         settingsService.loadColorConfig();
         setupInstanceCoordination();
         loadMissedHearings();
+
+        return () => window.removeEventListener(UI_ZOOM_EVENT, handleUiZoom);
     });
 
     // Global court reminder toast — shows on any tab, not just the calendar
@@ -144,7 +163,10 @@
     <RadioPTT />
     <div class="mdt-window" aria-label="Mobile data terminal tablet">
         <span class="tablet-camera material-icons" aria-hidden="true">fiber_manual_record</span>
-        <div class="mdt-interface">
+        <div
+            class="mdt-interface"
+            style={`zoom:${uiZoomLayout.zoom};width:${uiZoomLayout.width};height:${uiZoomLayout.height}`}
+        >
             <div class="mdt-content">
                 {#if !authService.isCivilian}
                     <div class="mdt-navigation">

@@ -1,5 +1,4 @@
 <script lang="ts">
-	import { onMount } from "svelte";
 	import { PLACEHOLDER_COMPONENTS, type ComponentId } from "../constants";
 	import type { AuthService } from "../services/authService.svelte";
 	import { fetchNui } from "../utils/fetchNui";
@@ -48,25 +47,10 @@
 
 	let { authService, tabService, instanceStateService }: Props = $props();
 
-	let contentZoom = $state("100%");
 	let sopAgreed = $state(false);
 	let sopChecked = $state(false);
 	let sopIntroduction = $state("");
 	let sopMissionStatement = $state("");
-
-	onMount(() => {
-		try {
-			const saved = localStorage.getItem("ps-mdt-preferences");
-			if (saved) {
-				const data = JSON.parse(saved);
-				if (data.uiZoom && data.uiZoom >= 100 && data.uiZoom <= 200) {
-					contentZoom = `${data.uiZoom}%`;
-				}
-			}
-		} catch {
-			// Ignore
-		}
-	});
 
 	// Check SOP agreement when auth becomes authorized
 	$effect(() => {
@@ -163,7 +147,7 @@
 	}
 </script>
 
-<div class="content-area" style="zoom: {contentZoom};">
+<div class="content-area">
 	{#if authService.isCivilian}
 		<CivilianView {authService} />
 	{:else if authService.isAuthorized}

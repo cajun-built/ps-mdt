@@ -1,12 +1,18 @@
 <script lang="ts">
 	import { onMount } from "svelte";
+	import {
+		DEFAULT_UI_ZOOM,
+		normalizeUiZoom,
+		UI_PREFERENCES_STORAGE_KEY,
+		UI_ZOOM_EVENT,
+	} from "../utils/uiZoom";
 
-	const STORAGE_KEY = "ps-mdt-preferences";
+	const STORAGE_KEY = UI_PREFERENCES_STORAGE_KEY;
 
 	// Appearance
 	let theme = $state("dark");
 	let notificationSounds = $state(true);
-	let uiZoom = $state(130);
+	let uiZoom = $state(DEFAULT_UI_ZOOM);
 
 	// Map
 	let defaultZoom = $state(5);
@@ -66,7 +72,7 @@
 			const data = JSON.parse(saved);
 			if (data.theme) theme = data.theme;
 			if (data.notificationSounds !== undefined) notificationSounds = data.notificationSounds;
-			if (data.uiZoom !== undefined) uiZoom = data.uiZoom;
+			if (data.uiZoom !== undefined) uiZoom = normalizeUiZoom(data.uiZoom);
 			if (data.defaultZoom !== undefined) defaultZoom = data.defaultZoom;
 			if (data.showOfficers !== undefined) showOfficers = data.showOfficers;
 			if (data.showVehicles !== undefined) showVehicles = data.showVehicles;
@@ -114,15 +120,12 @@
 	}
 
 	function applyZoom(value: number) {
-		uiZoom = value;
-		const el = document.querySelector(".content-area") as HTMLElement;
-		if (el) {
-			el.style.zoom = `${value}%`;
-		}
+		uiZoom = normalizeUiZoom(value);
+		window.dispatchEvent(new CustomEvent<number>(UI_ZOOM_EVENT, { detail: uiZoom }));
 	}
 
 	function resetZoom() {
-		applyZoom(130);
+		applyZoom(DEFAULT_UI_ZOOM);
 	}
 </script>
 
@@ -186,7 +189,7 @@
 							oninput={(e) => applyZoom(parseInt(e.currentTarget.value))}
 						/>
 						<span class="zoom-value">{uiZoom}%</span>
-						{#if uiZoom !== 130}
+						{#if uiZoom !== DEFAULT_UI_ZOOM}
 							<button class="zoom-reset" onclick={resetZoom} type="button">Reset</button>
 						{/if}
 					</div>
