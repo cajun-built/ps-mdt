@@ -34,6 +34,15 @@ export interface FleetAsset {
 	engineHealth?: number;
 	bodyHealth?: number;
 	mileage?: number;
+	maintenance?: {
+		status?: "unavailable" | "operational" | "service_required";
+		serviceDue?: boolean;
+		issueCount?: number;
+		lowestHealth?: number;
+		servicingData?: Record<string, number>;
+	};
+	maintenanceStatus?: "unavailable" | "operational" | "service_required";
+	serviceDue?: boolean;
 	version: number;
 	canCheckout?: boolean;
 	denialReason?: string;

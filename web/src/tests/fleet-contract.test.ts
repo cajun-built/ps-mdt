@@ -1,5 +1,6 @@
 import type { FleetAsset, FleetBootstrap, FleetMutationResponse } from "../interfaces/IFleet";
 import { NUI_EVENTS } from "../constants/nuiEvents";
+import { isFleetAttention } from "../utils/fleetStatus";
 
 const asset: FleetAsset = {
 	id: 1,
@@ -13,6 +14,8 @@ const asset: FleetAsset = {
 	homeMotorPool: "brpd_hq",
 	status: "available",
 	assignmentType: "general_pool",
+	maintenanceStatus: "service_required",
+	serviceDue: true,
 	canCheckout: true,
 	version: 1,
 };
@@ -32,3 +35,4 @@ const response: FleetMutationResponse<FleetAsset> = { success: true, data: asset
 void bootstrap;
 void response;
 void NUI_EVENTS.FLEET.GET_BOOTSTRAP;
+void isFleetAttention(asset);

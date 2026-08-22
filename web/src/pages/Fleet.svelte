@@ -3,6 +3,7 @@
 	import type { AuthService } from "../services/authService.svelte";
 	import { createFleetService } from "../services/fleetService.svelte";
 	import type { FleetAsset, FleetAssignmentType } from "../interfaces/IFleet";
+	import { isFleetAttention } from "../utils/fleetStatus";
 
 	interface Props { authService: AuthService }
 	let { authService }: Props = $props();
@@ -203,7 +204,7 @@
 		<div><strong>{fleet.bootstrap.assets.length}</strong><span>Total assets</span></div>
 		<div><strong>{fleet.bootstrap.assets.filter((asset) => asset.status === "available").length}</strong><span>Available</span></div>
 		<div><strong>{fleet.bootstrap.assets.filter((asset) => asset.status === "checked_out").length}</strong><span>Checked out</span></div>
-		<div><strong>{fleet.bootstrap.assets.filter((asset) => asset.status === "recovery_pending" || asset.status === "out_of_service").length}</strong><span>Attention</span></div>
+		<div><strong>{fleet.bootstrap.assets.filter(isFleetAttention).length}</strong><span>Attention</span></div>
 	</div>
 
 	{#if fleet.loading}
@@ -221,6 +222,7 @@
 						<div><dt>Assignment</dt><dd>{assignmentLabel(asset)}</dd></div>
 						<div><dt>Home motor pool</dt><dd>{fleet.bootstrap.motorPools.find((pool) => pool.key === asset.homeMotorPool)?.label || asset.homeMotorPool}</dd></div>
 						<div><dt>Condition</dt><dd>{Math.round(asset.bodyHealth ?? 1000)}/1000, {Math.round(asset.fuel ?? 100)}% fuel</dd></div>
+						<div><dt>Maintenance</dt><dd class:service-due={asset.serviceDue}>{asset.serviceDue ? `Service required, ${Math.round(asset.maintenance?.lowestHealth ?? 0)}% lowest part` : asset.maintenanceStatus === "operational" ? "Operational" : "No service data"}</dd></div>
 					</dl>
 					{#if asset.status !== "retired"}
 						<div class="actions">
@@ -308,6 +310,7 @@
 	.status { font-size: 8px; text-transform: uppercase; padding: 4px 7px; border-radius: 20px; background: rgba(255,255,255,.07); } .status.available { color: #86efac; background: rgba(34,197,94,.1); } .status.checked_out { color: #93c5fd; background: rgba(59,130,246,.1); } .status.recovery_pending, .status.out_of_service { color: #fca5a5; background: rgba(239,68,68,.1); }
 	.plate { display: inline-block; margin: 10px 0; padding: 4px 9px; border-radius: 4px; background: #e8e4d6; color: #171717; font-weight: 900; font-size: 11px; letter-spacing: 1px; }
 	dl { margin: 0; display: grid; grid-template-columns: 1fr 1fr; gap: 8px; } dl div { min-width: 0; } dt { color: rgba(255,255,255,.3); font-size: 8px; text-transform: uppercase; } dd { margin: 2px 0 0; font-size: 10px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+	dd.service-due { color: #fca5a5; }
 	.actions { flex-wrap: wrap; gap: 5px; margin-top: 12px; padding-top: 10px; border-top: 1px solid rgba(255,255,255,.055); } .actions button { font-size: 9px; padding: 6px 8px; }
 	.empty { display: flex; flex-direction: column; align-items: center; gap: 8px; padding: 55px; color: rgba(255,255,255,.35); } .empty .material-icons { font-size: 34px; }
 	.notice { padding: 9px 12px; border-radius: 7px; margin-bottom: 10px; font-size: 11px; } .notice.success { background: rgba(34,197,94,.1); color: #86efac; } .notice.error { background: rgba(239,68,68,.1); color: #fca5a5; }
