@@ -21,6 +21,7 @@
 	import Cases from "../pages/Cases.svelte";
 	import Evidence from "../pages/Evidence.svelte";
 	import Fleet from "../pages/Fleet.svelte";
+	import { canAccessFleetMdt } from "../utils/fleetPresentation";
 	import Cameras from "../pages/Cameras.svelte";
 	import Bodycams from "../pages/Bodycams.svelte";
 	import Awards from "../pages/Awards.svelte";
@@ -100,7 +101,7 @@
 		weapons: ["weapons_search", "weapons_add"],
 		cases: ["cases_view", "cases_create"],
 		evidence: ["evidence_view", "evidence_create"],
-		fleet: ["fleet.view", "fleet.checkout", "fleet.manage", "fleet.commission", "fleet.assign"],
+		fleet: ["fleet.mdt"],
 		reports: ["reports_view", "reports_create"],
 		warrants: ["warrants_view", "warrants_issue"],
 		charges: ["charges_view", "charges_edit"],
@@ -118,6 +119,7 @@
 
 	function canAccessPage(pageId: string): boolean {
 		if (authService.jobType === "doj" && DOJ_SHARED_PAGES.includes(pageId)) return true;
+		if (pageId === "fleet") return canAccessFleetMdt((permission) => authService.hasAnyPermission(permission));
 		const requiredPerms = PAGE_PERMISSIONS[pageId];
 		if (!requiredPerms) return true;
 		return authService.hasAnyPermission(...requiredPerms);

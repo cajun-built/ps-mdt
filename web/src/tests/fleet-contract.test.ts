@@ -17,6 +17,15 @@ const asset: FleetAsset = {
 	maintenanceStatus: "service_required",
 	serviceDue: true,
 	canCheckout: true,
+	lastOperator: {
+		personnelId: 27,
+		citizenid: "CID27",
+		callsign: "204",
+		badge: "BR204",
+		status: "returned",
+		checkoutAt: "2026-08-22 14:15:00",
+		returnedAt: "2026-08-22 15:30:00",
+	},
 	version: 1,
 };
 

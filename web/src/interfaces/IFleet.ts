@@ -13,6 +13,16 @@ export type FleetAssignmentType =
 	| "command_pool"
 	| "unit";
 
+export interface FleetOperator {
+	personnelId: number;
+	citizenid: string;
+	callsign?: string;
+	badge?: string;
+	status: "active" | "returned" | "recovery_pending";
+	checkoutAt: string;
+	returnedAt?: string;
+}
+
 export interface FleetAsset {
 	id: number;
 	assetUuid: string;
@@ -43,6 +53,7 @@ export interface FleetAsset {
 	};
 	maintenanceStatus?: "unavailable" | "operational" | "service_required";
 	serviceDue?: boolean;
+	lastOperator?: FleetOperator;
 	version: number;
 	canCheckout?: boolean;
 	denialReason?: string;

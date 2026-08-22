@@ -5,6 +5,7 @@
 	import type { AuthService } from "../services/authService.svelte";
 	import DepartmentLogo from "./DepartmentLogo.svelte";
 	import { resolveDepartmentBrand, type DepartmentBrand } from "../utils/departmentBranding";
+	import { canAccessFleetMdt } from "../utils/fleetPresentation";
 
 	interface Props {
 		tabService: ReturnType<typeof createTabService>;
@@ -24,6 +25,7 @@
 
 	function isTabHidden(tabName: string): boolean {
 		if (!authService) return false;
+		if (tabName === "Fleet" && !canAccessFleetMdt((permission) => authService.hasAnyPermission(permission))) return true;
 		const key = `tab_hidden_${tabName.toLowerCase()}`;
 		return authService.hasRawPermission(key);
 	}

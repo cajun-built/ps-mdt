@@ -603,6 +603,7 @@ Config.ManagementPermissions = {
     'vehicles_search',
     'vehicles_edit_dmv',
     'fleet.view',
+    'fleet.mdt',
     'fleet.checkout',
     'fleet.manage',
     'fleet.commission',

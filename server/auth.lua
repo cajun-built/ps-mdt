@@ -40,6 +40,7 @@ local leoPermissionMap = {
     vehicles_edit_registry = { permission = 'records.supplement' },
     vehicles_edit_dmv = { permission = 'records.lifecycle' },
     ['fleet.view'] = { permission = 'fleet.view' },
+    ['fleet.mdt'] = { permission = 'fleet.mdt' },
     ['fleet.checkout'] = { permission = 'fleet.checkout' },
     ['fleet.manage'] = { permission = 'fleet.manage' },
     ['fleet.commission'] = { permission = 'fleet.commission' },

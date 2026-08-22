@@ -4,6 +4,7 @@
 	import { createFleetService } from "../services/fleetService.svelte";
 	import type { FleetAsset, FleetAssignmentType } from "../interfaces/IFleet";
 	import { isFleetAttention } from "../utils/fleetStatus";
+	import { fleetOperatorSummary } from "../utils/fleetPresentation";
 
 	interface Props { authService: AuthService }
 	let { authService }: Props = $props();
@@ -70,6 +71,10 @@
 		}
 		if (asset.assignmentType === "unit") return statusLabel(asset.assignmentKey || "Unit");
 		return statusLabel(asset.assignmentType);
+	}
+
+	function operatorSummary(asset: FleetAsset) {
+		return fleetOperatorSummary(asset, fleet.bootstrap.personnel);
 	}
 
 	function nextIdentity(): { fleetNumber: string; plate: string } {
@@ -214,6 +219,7 @@
 	{:else}
 		<div class="asset-grid">
 			{#each filteredAssets as asset (asset.id)}
+				{@const usage = operatorSummary(asset)}
 				<article class="asset-card">
 					<div class="asset-top"><div><span class="fleet-number">FLEET {asset.fleetNumber}</span><h2>{asset.model}</h2></div><span class="status {asset.status}">{statusLabel(asset.status)}</span></div>
 					<div class="plate">{asset.plate}</div>
@@ -223,6 +229,7 @@
 						<div><dt>Home motor pool</dt><dd>{fleet.bootstrap.motorPools.find((pool) => pool.key === asset.homeMotorPool)?.label || asset.homeMotorPool}</dd></div>
 						<div><dt>Condition</dt><dd>{Math.round(asset.bodyHealth ?? 1000)}/1000, {Math.round(asset.fuel ?? 100)}% fuel</dd></div>
 						<div><dt>Maintenance</dt><dd class:service-due={asset.serviceDue}>{asset.serviceDue ? `Service required, ${Math.round(asset.maintenance?.lowestHealth ?? 0)}% lowest part` : asset.maintenanceStatus === "operational" ? "Operational" : "No service data"}</dd></div>
+						<div><dt>{usage.label}</dt><dd title={`${usage.operator}${usage.timestamp ? `, ${usage.timestamp}` : ""}`}>{usage.operator}{usage.timestamp ? `, ${usage.timestamp}` : ""}</dd></div>
 					</dl>
 					{#if asset.status !== "retired"}
 						<div class="actions">
