@@ -45,6 +45,11 @@ RegisterNUICallback('hireOfficer', function(data, cb)
     cb(ps.callback('ps-mdt:server:hireOfficer', data) or { success = false })
 end)
 
+RegisterNUICallback('resolveHireCandidate', function(data, cb)
+    if not MDTOpen then cb({ success = false }) return end
+    cb(ps.callback('ps-mdt:server:resolveHireCandidate', data) or { success = false })
+end)
+
 RegisterNUICallback('updateOfficerBadge', function(data, cb)
     if not MDTOpen then cb({ success = false }) return end
     cb(ps.callback('ps-mdt:server:updateOfficerBadge', data) or { success = false })

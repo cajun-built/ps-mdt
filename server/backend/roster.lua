@@ -42,6 +42,20 @@ local function coreResult(ok, result, successMessage)
     return { success = false, message = tostring(result or 'Action denied') }
 end
 
+local hireErrors = {
+    invalid_server_id = 'Enter a valid server ID',
+    player_not_online = 'That player is not online',
+    self_action_denied = 'You cannot hire your own character',
+    duplicate_action = 'That character is already LEO personnel',
+    candidate_changed = 'The player on that server ID changed. Find the player again',
+    rank_insufficient = 'You do not have permission to hire officers',
+}
+
+local function hireResult(ok, result, successMessage)
+    if ok then return { success = true, message = successMessage, candidate = result, personnel = result } end
+    return { success = false, message = hireErrors[result] or tostring(result or 'Hiring action denied') }
+end
+
 local function actionId(source, operation, payload)
     payload = payload or {}
     if type(payload.actionId) == 'string' and payload.actionId ~= '' then
@@ -675,12 +689,22 @@ ps.registerCallback('ps-mdt:server:hireOfficer', function(source, payload)
     end
     payload = payload or {}
     local ok, result = exports.cgn_leo_core:Hire(source, {
-        citizenid = payload.citizenid,
+        serverId = payload.serverId,
+        expectedCitizenId = payload.expectedCitizenId,
         badge = payload.badge,
         callsign = payload.callsign,
         reason = payload.reason,
     }, actionId(source, 'hire', payload))
-    return coreResult(ok, result, 'Officer hired at entry rank')
+    return hireResult(ok, result, 'Officer hired at entry rank')
+end)
+
+ps.registerCallback('ps-mdt:server:resolveHireCandidate', function(source, payload)
+    if not CheckAuth(source) or not isLeoSource(source) then
+        return { success = false, message = 'Unauthorized' }
+    end
+    payload = payload or {}
+    local ok, result = exports.cgn_leo_core:ResolveHireCandidate(source, payload.serverId)
+    return hireResult(ok, result)
 end)
 
 ps.registerCallback('ps-mdt:server:updateOfficerBadge', function(source, payload)

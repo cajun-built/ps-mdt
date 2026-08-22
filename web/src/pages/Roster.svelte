@@ -174,7 +174,8 @@
 	let restrictionActive = $state(true);
 	let restrictionExpiresAt = $state("");
 	let showHireModal = $state(false);
-	let hireCitizenId = $state("");
+	let hireServerId = $state("");
+	let hireCandidate = $state<{ serverId: number; citizenid: string; name: string } | null>(null);
 	let hireBadge = $state("");
 	let hireCallsign = $state("");
 	let hireReason = $state("");
@@ -859,17 +860,39 @@
 		finally { isSavingBoss = false; }
 	}
 
+	function closeHireModal() {
+		showHireModal = false;
+		hireServerId = "";
+		hireCandidate = null;
+		hireBadge = "";
+		hireCallsign = "";
+		hireReason = "";
+	}
+
+	async function resolveHireCandidate() {
+		if (!/^\d+$/.test(hireServerId.trim())) return;
+		isSavingBoss = true;
+		try {
+			const response = await fetchNui<{ success: boolean; message?: string; candidate?: { serverId: number; citizenid: string; name: string } }>(NUI_EVENTS.ROSTER.RESOLVE_HIRE_CANDIDATE, {
+				serverId: Number(hireServerId),
+			});
+			if (response?.success && response.candidate) hireCandidate = response.candidate;
+			else globalNotifications.error(response?.message || "Player could not be verified");
+		} catch { globalNotifications.error("Player could not be verified"); }
+		finally { isSavingBoss = false; }
+	}
+
 	async function hireOfficer() {
-		if ([hireCitizenId, hireBadge, hireCallsign, hireReason].some((value) => value.trim().length < 3)) return;
+		if (!hireCandidate || [hireBadge, hireCallsign, hireReason].some((value) => value.trim().length < 3)) return;
 		isSavingBoss = true;
 		try {
 			const response = await fetchNui<{ success: boolean; message?: string }>(NUI_EVENTS.ROSTER.HIRE_OFFICER, {
-				citizenid: hireCitizenId.trim(), badge: hireBadge.trim(), callsign: hireCallsign.trim(), reason: hireReason.trim(),
+				serverId: hireCandidate.serverId, expectedCitizenId: hireCandidate.citizenid,
+				badge: hireBadge.trim(), callsign: hireCallsign.trim(), reason: hireReason.trim(),
 			});
 			if (response?.success) {
 				globalNotifications.success(response.message || "Officer hired");
-				showHireModal = false;
-				hireCitizenId = ""; hireBadge = ""; hireCallsign = ""; hireReason = "";
+				closeHireModal();
 				await loadRoster();
 			} else globalNotifications.error(response?.message || "Failed to hire officer");
 		} catch { globalNotifications.error("Failed to hire officer"); }
@@ -1587,21 +1610,28 @@
 {/if}
 
 {#if showHireModal}
-	<div class="modal-overlay" onclick={() => showHireModal = false} role="presentation">
+	<div class="modal-overlay" onclick={closeHireModal} role="presentation">
 		<div class="modal-container" onclick={(event) => event.stopPropagation()} role="dialog" aria-modal="true" aria-label="Hire officer">
 			<div class="modal-header">
 				<div class="modal-title-area"><span class="modal-title">Hire Officer</span><span class="modal-subtitle">Entry rank and academy assignment are applied automatically.</span></div>
-				<button class="modal-close" onclick={() => showHireModal = false}><span class="material-icons">close</span></button>
+				<button class="modal-close" onclick={closeHireModal}><span class="material-icons">close</span></button>
 			</div>
 			<div class="modal-body boss-section">
-				<label class="boss-label">Citizen ID</label><input class="callsign-input" bind:value={hireCitizenId} placeholder="Citizen ID" />
+				<label class="boss-label">Server ID</label><input class="callsign-input" type="number" min="1" bind:value={hireServerId} oninput={() => hireCandidate = null} placeholder="Player server ID" />
+				{#if hireCandidate}
+					<div class="hire-candidate"><span class="material-icons">person</span><div><strong>{hireCandidate.name}</strong><small>Server ID {hireCandidate.serverId}</small></div></div>
+				{/if}
 				<label class="boss-label">Permanent Badge Number</label><input class="callsign-input" bind:value={hireBadge} maxlength="20" placeholder="Badge number" />
 				<label class="boss-label">Initial Callsign</label><input class="callsign-input" bind:value={hireCallsign} maxlength="32" placeholder="Callsign" />
 				<label class="boss-label">Written Reason</label><input class="callsign-input" bind:value={hireReason} maxlength="500" placeholder="Hiring reason" />
 			</div>
 			<div class="modal-footer">
-				<button class="btn-cancel" onclick={() => showHireModal = false}>Cancel</button>
-				<button class="btn-save" onclick={hireOfficer} disabled={isSavingBoss || [hireCitizenId, hireBadge, hireCallsign, hireReason].some((value) => value.trim().length < 3)}>{isSavingBoss ? "Hiring..." : "Hire Officer"}</button>
+				<button class="btn-cancel" onclick={closeHireModal}>Cancel</button>
+				{#if hireCandidate}
+					<button class="btn-save" onclick={hireOfficer} disabled={isSavingBoss || [hireBadge, hireCallsign, hireReason].some((value) => value.trim().length < 3)}>{isSavingBoss ? "Hiring..." : `Hire ${hireCandidate.name}`}</button>
+				{:else}
+					<button class="btn-save" onclick={resolveHireCandidate} disabled={isSavingBoss || !/^\d+$/.test(hireServerId.trim())}>{isSavingBoss ? "Finding..." : "Find Player"}</button>
+				{/if}
 			</div>
 		</div>
 	</div>
@@ -2412,6 +2442,21 @@
 	.boss-label-danger {
 		color: rgba(239, 68, 68, 0.8);
 	}
+
+	.hire-candidate {
+		display: flex;
+		align-items: center;
+		gap: 10px;
+		padding: 10px;
+		border: 1px solid rgba(var(--accent-rgb), 0.2);
+		border-radius: 4px;
+		background: rgba(var(--accent-rgb), 0.06);
+		color: rgba(255, 255, 255, 0.85);
+	}
+
+	.hire-candidate .material-icons { color: rgba(var(--accent-text-rgb), 0.8); }
+	.hire-candidate div { display: flex; flex-direction: column; gap: 2px; }
+	.hire-candidate small { color: rgba(255, 255, 255, 0.45); }
 
 	.boss-hint {
 		font-size: 10px;

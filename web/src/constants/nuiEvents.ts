@@ -186,6 +186,7 @@ export const NUI_EVENTS = {
 		PROMOTE_OFFICER: "promoteOfficer",
 		FIRE_OFFICER: "fireOfficer",
 		UPDATE_CALLSIGN: "updateOfficerCallsign",
+		RESOLVE_HIRE_CANDIDATE: "resolveHireCandidate",
 		HIRE_OFFICER: "hireOfficer",
 		UPDATE_BADGE: "updateOfficerBadge",
 		UPDATE_ASSIGNMENT: "updateOfficerAssignment",
