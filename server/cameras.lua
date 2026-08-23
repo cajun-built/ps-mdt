@@ -1512,7 +1512,7 @@ local function onPlayerReady()
     SetTimeout(1500, SpawnPendingCameras)
 end
 
-AddEventHandler('QBCore:Server:OnPlayerLoaded', onPlayerReady)
+RegisterNetEvent('QBCore:Server:OnPlayerLoaded', onPlayerReady)
 AddEventHandler('qbx_core:server:onPlayerLoaded', onPlayerReady)
 AddEventHandler('esx:playerLoaded', onPlayerReady)
 
