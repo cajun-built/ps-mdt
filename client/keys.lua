@@ -19,8 +19,9 @@ local RegisterNUICallback = RegisterNUICallback
 -- Permissions check ------------------------------------------
 
 -- Check Job Authorization (returns true, false, or { isCivilian = true })
-function CheckAuth()
-    local result = ps.callback(resourceName..':server:checkAuth')
+function CheckAuth(accessContext)
+    local context = accessContext or (GetMdtAccessContext and GetMdtAccessContext()) or 'vehicle'
+    local result = ps.callback(resourceName..':server:checkAuth', context)
     if type(result) == 'table' and result.isCivilian then
         return result
     end
@@ -112,12 +113,17 @@ end
 -- MDT Display ------------------------------------------------
 
 -- Open MDT
-function OpenMDT()
+function OpenMDT(accessContext)
     -- Check auth
-    local authResult = CheckAuth()
+    local authResult = CheckAuth(accessContext or 'vehicle')
 
     local isCivilian = type(authResult) == 'table' and authResult.isCivilian
-    if not authResult and not isCivilian then return end
+    local authorized = authResult == true or
+        (type(authResult) == 'table' and authResult.authorized == true)
+    if not authorized or isCivilian then
+        ps.notify('Use a station computer or a commissioned patrol vehicle to open the MDT', 'error')
+        return
+    end
 
     -- Don't allow if player is dead
     if ps.isDead() then
@@ -164,21 +170,11 @@ function OpenMDT()
     -- related is pushed to later frames so opening never spikes one frame.
     SendNUI('setVisible', { visible = true, debugMode = Config.Debug, dateTime = Config.DateTime })
 
-    if isCivilian then
-        -- Civilian mode: send auth with civilian flag
-        local playerData = ps.getPlayerData()
-        SendNUI('updateAuth', {
-            authorized = true,
-            playerData = playerData,
-            isLEO = false,
-            onDuty = true,
-            isCivilian = true,
-            jobType = 'civilian',
-        })
-    else
-        NUIUpdateAuth()
-        TriggerServerEvent('ps-mdt:server:trackLogin')
+    if type(authResult) == 'table' and authResult.isLEO then
+        SetMdtAccessContext(authResult.accessContext)
     end
+    NUIUpdateAuth()
+    TriggerServerEvent('ps-mdt:server:trackLogin')
 
     focusMDT()
     toggleControls(true)
@@ -197,13 +193,11 @@ function OpenMDT()
         Wait(0)
         if not MDTOpen then return end -- player toggled it back off already
 
-        if not isCivilian then
-            PlayMDTSound('open')
-            -- Tablet prop + animation (CreateObject / AttachEntity / TaskPlayAnim)
-            -- is the most expensive native cluster on open; it yields internally
-            -- so it lands on its own frame(s), not the UI frame.
-            PlayTabletAnimation()
-        end
+        PlayMDTSound('open')
+        -- Tablet prop + animation (CreateObject / AttachEntity / TaskPlayAnim)
+        -- is the most expensive native cluster on open; it yields internally
+        -- so it lands on its own frame(s), not the UI frame.
+        PlayTabletAnimation()
 
         Wait(0)
         if not MDTOpen then return end
@@ -225,6 +219,7 @@ local closeControlsPending = false
 function CloseMDT(keepAnimation)
     local wasOpen = MDTOpen
     MDTOpen = false
+    if ClearMdtAccessContext then ClearMdtAccessContext() end
 
     if wasOpen then
         if StopMdtRadio then StopMdtRadio() end

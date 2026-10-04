@@ -8,10 +8,39 @@ Config.OnlyShowOnDuty = true -- Only allow the MDT to be opened when on duty (bo
 
 -- Civilian Access Settings
 Config.CivilianAccess = {
-    enabled = true,   -- Allow civilians to open the MDT (profile + legislation view only)
-    command = true,   -- Allow /mdt command for civilians
+    enabled = false,  -- Civilian access is disabled; this is a restricted government system
+    command = false,
     showWarrants = true, -- Show active warrants on civilian profile
     showBolos = true,    -- Show active BOLOs on civilian profile
+}
+
+-- Physical MDT access points. Station computers are targeted with ox_target;
+-- F11 and /mdt are reserved for commissioned ground fleet vehicles.
+Config.MdtAccess = {
+    vehicleClass = 18,
+    targetDistance = 2.0,
+    computerModels = {
+        'v_res_monitor',
+        'prop_monitor_01a',
+        'prop_monitor_01b',
+        'prop_monitor_01c',
+        'prop_monitor_02',
+        'prop_monitor_03b',
+        'prop_monitor_04a',
+        'prop_monitor_li',
+        'prop_pc_01a',
+        'prop_laptop_01a',
+        'prop_laptop_01b',
+        'prop_laptop_lester2',
+        'hei_prop_hst_laptop',
+        'xm_prop_x17_laptop_lester_01',
+    },
+    stations = {
+        { id = 'brpd_hq', label = 'BRPD Headquarters', x = 441.0, y = -982.0, z = 30.0, radius = 85.0 },
+        { id = 'ebrso_hq', label = 'EBRSO Headquarters', x = 1841.33, y = 3682.11, z = 34.10, radius = 85.0 },
+        { id = 'ebrso_ss', label = 'EBRSO Sub Station', x = -462.09, y = 6014.83, z = 31.48, radius = 85.0 },
+        { id = 'lsp_hq', label = 'LSP Headquarters', x = 1567.82, y = 840.0, z = 77.51, radius = 100.0 },
+    },
 }
 
 -- Time and Date Settings

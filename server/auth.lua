@@ -353,17 +353,24 @@ AddEventHandler('playerDropped', function()
     endTrackedMdtSession(src)
 end)
 
-ps.registerCallback(tostring(GetCurrentResourceName())..':server:checkAuth', function(source)
+ps.registerCallback(tostring(GetCurrentResourceName())..':server:checkAuth', function(source, requestedContext)
     local civAccess = Config.CivilianAccess and Config.CivilianAccess.enabled
     local jobType = ps.getJobType(source)
     if jobType == Config.PoliceJobType then
         local context, reason = getLeoContext(source)
         if context then
+            local allowed, accessReason = MdtAccessPolicy.canOpen(Config.MdtAccess, {
+                isLeo = true,
+                onDuty = context.onDuty == true,
+                personnelVerified = true,
+            }, BuildMdtAccessRequest(source, requestedContext))
             return {
-                authorized = context.onDuty == true,
+                authorized = allowed,
                 isLEO = true,
                 onDuty = context.onDuty == true,
                 jobType = 'leo',
+                accessContext = allowed and requestedContext or nil,
+                reason = accessReason,
             }
         end
         return {

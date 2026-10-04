@@ -22,7 +22,7 @@ exports('IsMDTOpen', function() return MDTOpen end)
 
 -- Open MDT with export
 exports('OpenMDT', function()
-    OpenMDT()
+    OpenMDT('vehicle')
 end)
 
 -- Close MDT (delegates to full CloseMDT which handles animation, controls, logout tracking)
@@ -32,25 +32,6 @@ end)
 
 -- Open civilian MDT (profile + legislation view)
 exports('openCivilianMDT', function()
-    if MDTOpen then return end
-    MDTOpen = true
-    local playerData = ps.getPlayerData()
-    SendNUI('setVisible', { visible = true, debugMode = Config.Debug, dateTime = Config.DateTime })
-    SendNUI('updateAuth', {
-        authorized = true,
-        playerData = playerData,
-        isLEO = false,
-        onDuty = true,
-        isCivilian = true,
-        jobType = 'civilian',
-    })
-    SetNuiFocusKeepInput(false)
-    SetNuiFocus(true, true)
-    CreateThread(function()
-        Wait(150)
-        if MDTOpen then
-            SetNuiFocusKeepInput(false)
-            SetNuiFocus(true, true)
-        end
-    end)
+    ps.notify('Civilian MDT access is disabled', 'error')
+    return false
 end)

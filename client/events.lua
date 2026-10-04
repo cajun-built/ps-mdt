@@ -48,6 +48,11 @@ end
 
 local function onSetDuty(duty)
     if MDTOpen then
+        if duty ~= true then
+            CloseMDT()
+            ps.notify('MDT closed - Access revoked', 'error')
+            return
+        end
         local job = ps.getJob()
         if job then
             job.onduty = duty

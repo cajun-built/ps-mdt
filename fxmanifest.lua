@@ -12,15 +12,18 @@ ui_page 'web/dist/index.html'
 
 dependencies {
   'ps_lib',
+  'qbx_core',
   'cgn_leo_core',
   'cgn_leo_fleet',
   'ps-dispatch',
   'oxmysql',
-  'ox_lib'
+  'ox_lib',
+  'ox_target'
 }
 
 shared_scripts {
   'config.lua',
+  'shared/access_policy.lua',
   '@ox_lib/init.lua',
   'bridge/shared.lua'
 }
