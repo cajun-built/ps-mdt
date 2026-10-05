@@ -1,5 +1,16 @@
 local targetName = 'ps_mdt_station_computer'
 local activeAccessContext = nil
+local stationComputerModels = Config.MdtAccess.computerModels
+
+local function getStationComputerModels()
+    local ok, models = pcall(function()
+        return exports.cgn_leo_core:GetStationComputerModels()
+    end)
+    if ok and type(models) == 'table' and #models > 0 then
+        return models
+    end
+    return stationComputerModels
+end
 
 local function currentCoords()
     local coords = GetEntityCoords(PlayerPedId())
@@ -34,7 +45,8 @@ function ClearMdtAccessContext()
 end
 
 CreateThread(function()
-    exports.ox_target:addModel(Config.MdtAccess.computerModels, {
+    stationComputerModels = getStationComputerModels()
+    exports.ox_target:addModel(stationComputerModels, {
         {
             name = targetName,
             icon = 'fa-solid fa-computer',
@@ -69,5 +81,5 @@ end)
 
 AddEventHandler('onResourceStop', function(resource)
     if resource ~= GetCurrentResourceName() then return end
-    exports.ox_target:removeModel(Config.MdtAccess.computerModels, targetName)
+    exports.ox_target:removeModel(stationComputerModels, targetName)
 end)
