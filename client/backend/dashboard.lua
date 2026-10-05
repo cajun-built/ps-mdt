@@ -53,7 +53,10 @@ RegisterNUICallback('checkAuth', function(_, cb)
     local jobName = ps.getJob() and ps.getJob().name or ''
     local isDoj = _isDojJob(jobName) or (Config.DojJobType and jobType == Config.DojJobType)
     local isLeo = jobType == Config.PoliceJobType
-    local serverAuth = isLeo and ps.callback(resourceName..':server:checkAuth') or nil
+    local serverAuth = isLeo and ps.callback(
+        resourceName..':server:checkAuth',
+        GetMdtAccessContext()
+    ) or nil
     local verifiedLeo = isLeo and type(serverAuth) == 'table' and serverAuth.isLEO == true
     local isAuthorized = isLeo and verifiedLeo and serverAuth.authorized == true
         or _isEmsJob(jobName, jobType)
@@ -98,7 +101,10 @@ function NUIUpdateAuth()
     local jobName = ps.getJob() and ps.getJob().name or ''
     local isDoj = _isDojJob(jobName) or (Config.DojJobType and jobType == Config.DojJobType)
     local isLeo = jobType == Config.PoliceJobType
-    local serverAuth = isLeo and ps.callback(resourceName..':server:checkAuth') or nil
+    local serverAuth = isLeo and ps.callback(
+        resourceName..':server:checkAuth',
+        GetMdtAccessContext()
+    ) or nil
     local verifiedLeo = isLeo and type(serverAuth) == 'table' and serverAuth.isLEO == true
     local isAuthorized = isLeo and verifiedLeo and serverAuth.authorized == true
         or _isEmsJob(jobName, jobType)
