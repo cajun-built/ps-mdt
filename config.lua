@@ -37,7 +37,8 @@ Config.MdtAccess = {
     },
     stations = {
         { id = 'brpd_hq', label = 'BRPD Headquarters', x = 441.0, y = -982.0, z = 30.0, radius = 85.0 },
-        { id = 'ebrso_hq', label = 'EBRSO Headquarters', x = 1841.33, y = 3682.11, z = 34.10, radius = 85.0 },
+        -- Keep the prison HQ aligned with cgn_leo_core's EBRSO workplace.
+        { id = 'ebrso_hq', label = 'EBRSO Headquarters', x = 1836.18, y = 2585.0, z = 45.89, radius = 85.0 },
         { id = 'ebrso_ss', label = 'EBRSO Sub Station', x = -462.09, y = 6014.83, z = 31.48, radius = 85.0 },
         { id = 'lsp_hq', label = 'LSP Headquarters', x = 1567.82, y = 840.0, z = 77.51, radius = 100.0 },
     },
