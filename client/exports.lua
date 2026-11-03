@@ -20,9 +20,10 @@ exports('IsLEOJob', isLEOJob)
 -- Check if MDT is open
 exports('IsMDTOpen', function() return MDTOpen end)
 
--- Open MDT with export
-exports('OpenMDT', function()
-    OpenMDT('vehicle')
+-- Open MDT with export. Callers may pass 'station' or 'vehicle'; the server still
+-- verifies the access point, so this cannot widen MDT access.
+exports('OpenMDT', function(accessContext)
+    OpenMDT(accessContext == 'station' and 'station' or 'vehicle')
 end)
 
 -- Close MDT (delegates to full CloseMDT which handles animation, controls, logout tracking)
