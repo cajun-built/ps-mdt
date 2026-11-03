@@ -5,6 +5,7 @@
 	import { mdtStore } from "../stores/mdtStore";
 	import { setDateTimeConfig } from "../utils/datetime";
 	import { NUI_EVENTS } from "../constants/nuiEvents";
+	import { embedState } from "../stores/embedState.svelte";
 	import { onMount, type Snippet } from "svelte";
 
 	let { children }: { children: Snippet } = $props();
@@ -21,9 +22,12 @@
 	};
 
 	onMount(() => {
-		useNuiEvent<{ visible: boolean; debugMode?: boolean; dateTime?: { TimeFormat?: string; DateFormat?: string } }>(
+		useNuiEvent<{ visible: boolean; debugMode?: boolean; embedded?: boolean; dateTime?: { TimeFormat?: string; DateFormat?: string } }>(
 			NUI_EVENTS.NAVIGATION.SET_VISIBLE,
 			(data) => {
+				if (data.visible) {
+					embedState.active = data.embedded === true;
+				}
 				if (data.debugMode !== undefined) {
 					mdtStore.setDebugMode(data.debugMode);
 				}

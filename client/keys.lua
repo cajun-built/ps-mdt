@@ -112,8 +112,32 @@ end
 
 -- MDT Display ------------------------------------------------
 
+-- LEO workstation integration ---------------------------------
+-- When cgn_leo_workstation is running, LEO terminals open the computer with the
+-- MDT inside it. The workstation then opens the MDT here in embedded mode, which
+-- drops the tablet and sits in the desktop above the workstation taskbar.
+
+local workstationResource = 'cgn_leo_workstation'
+local embeddedZIndex = 20
+MdtEmbedded = false
+
+local function openThroughWorkstation(accessContext)
+    if GetResourceState(workstationResource) ~= 'started' then return false end
+    if ps.getJobType() ~= Config.PoliceJobType then return false end
+    local context = accessContext or (GetMdtAccessContext and GetMdtAccessContext()) or 'vehicle'
+    local ok, handled = pcall(function()
+        return exports[workstationResource]:OpenWithMdt(context)
+    end)
+    return ok and handled == true
+end
+
 -- Open MDT
-function OpenMDT(accessContext)
+function OpenMDT(accessContext, options)
+    local embedded = type(options) == 'table' and options.embedded == true
+    if not embedded and not MDTOpen and openThroughWorkstation(accessContext) then
+        return
+    end
+
     -- Check auth
     local authResult = CheckAuth(accessContext or 'vehicle')
 
@@ -163,12 +187,17 @@ function OpenMDT(accessContext)
     end
 
     MDTOpen = true
+    MdtEmbedded = embedded
+    if embedded then
+        -- Keep the MDT frame above the workstation desktop.
+        SetNuiZindex(embeddedZIndex)
+    end
 
     -- ── Critical path: get the UI on screen this frame ──────────────────────
     -- Only visibility + auth + focus run synchronously so the panel appears
     -- instantly. Everything cosmetic (sound, tablet prop/animation) or map-
     -- related is pushed to later frames so opening never spikes one frame.
-    SendNUI('setVisible', { visible = true, debugMode = Config.Debug, dateTime = Config.DateTime })
+    SendNUI('setVisible', { visible = true, debugMode = Config.Debug, dateTime = Config.DateTime, embedded = embedded })
 
     if type(authResult) == 'table' and authResult.isLEO then
         SetMdtAccessContext(authResult.accessContext)
@@ -197,7 +226,10 @@ function OpenMDT(accessContext)
         -- Tablet prop + animation (CreateObject / AttachEntity / TaskPlayAnim)
         -- is the most expensive native cluster on open; it yields internally
         -- so it lands on its own frame(s), not the UI frame.
-        PlayTabletAnimation()
+        -- The workstation is a computer, so embedded mode skips the tablet.
+        if not MdtEmbedded then
+            PlayTabletAnimation()
+        end
 
         Wait(0)
         if not MDTOpen then return end
@@ -246,6 +278,12 @@ function CloseMDT(keepAnimation)
     if wasOpen then
         ps.debug('MDT closed via CloseMDT function')
         TriggerServerEvent('ps-mdt:server:trackLogout')
+    end
+
+    -- Hand focus back to the workstation desktop.
+    if wasOpen and MdtEmbedded then
+        MdtEmbedded = false
+        TriggerEvent('ps-mdt:client:embeddedClosed')
     end
 end
 

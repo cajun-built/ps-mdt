@@ -24,6 +24,11 @@
         UI_ZOOM_EVENT,
     } from "../utils/uiZoom";
     import type {AuthUpdateData} from "@/interfaces/IUser";
+    import {embedState} from "../stores/embedState.svelte";
+
+    function closeEmbedded() {
+        void fetchNui(NUI_EVENTS.NAVIGATION.CLOSE_UI);
+    }
 
     const authService = createAuthService();
     const tabService = createTabService();
@@ -156,13 +161,27 @@
 
 <main
     class="mdt-container"
+    class:embedded={embedState.active}
     data-job-type={authService.jobType}
     data-department={departmentBrand.jobName}
     style={`--accent-rgb:${departmentBrand.accentRgb};--accent-text-rgb:${departmentBrand.accentTextRgb}`}
 >
     <RadioPTT />
-    <div class="mdt-window" aria-label="Mobile data terminal tablet">
-        <span class="tablet-camera material-icons" aria-hidden="true">fiber_manual_record</span>
+    <div class="mdt-window" aria-label="Mobile data terminal">
+        {#if embedState.active}
+            <header class="embedded-title">
+                <span class="embedded-icon material-icons" aria-hidden="true">computer</span>
+                <span class="embedded-name">MDT / CAD</span>
+                <button class="embedded-control" title="Minimize to desktop" onclick={closeEmbedded}>
+                    <span class="material-icons">remove</span>
+                </button>
+                <button class="embedded-control close" title="Close" onclick={closeEmbedded}>
+                    <span class="material-icons">close</span>
+                </button>
+            </header>
+        {:else}
+            <span class="tablet-camera material-icons" aria-hidden="true">fiber_manual_record</span>
+        {/if}
         <div
             class="mdt-interface"
             style={`zoom:${uiZoomLayout.zoom};width:${uiZoomLayout.width};height:${uiZoomLayout.height}`}
@@ -282,6 +301,79 @@
         min-width: 0;
         width: 100%;
         background: #0e1319;
+    }
+
+    /* Inside the LEO workstation: a maximized window above its 48px taskbar. */
+    .mdt-container.embedded {
+        height: calc(100vh - 48px);
+        padding: 0;
+    }
+
+    .mdt-container.embedded .mdt-window {
+        width: 100%;
+        height: 100%;
+        padding: 0;
+        border: 0;
+        border-radius: 0;
+        box-shadow: none;
+        background: #0a0e13;
+    }
+
+    .mdt-container.embedded .mdt-interface {
+        /* Share the window with the title bar instead of taking its full height. */
+        flex: 1;
+        min-height: 0;
+        height: auto !important;
+        border: 0;
+        border-radius: 0;
+        box-shadow: none;
+    }
+
+    .embedded-title {
+        height: 34px;
+        flex: none;
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        padding-left: 12px;
+        background: #070a0e;
+        border-bottom: 1px solid rgba(255, 255, 255, 0.07);
+        color: rgba(255, 255, 255, 0.8);
+        font-size: 12px;
+        user-select: none;
+    }
+
+    .embedded-icon {
+        font-size: 16px;
+        color: rgb(var(--accent-rgb, 59 130 246));
+    }
+
+    .embedded-name {
+        flex: 1;
+    }
+
+    .embedded-control {
+        width: 46px;
+        height: 100%;
+        border: 0;
+        background: transparent;
+        color: rgba(255, 255, 255, 0.75);
+        display: grid;
+        place-items: center;
+        cursor: default;
+    }
+
+    .embedded-control .material-icons {
+        font-size: 16px;
+    }
+
+    .embedded-control:hover {
+        background: rgba(255, 255, 255, 0.08);
+    }
+
+    .embedded-control.close:hover {
+        background: #c42b1c;
+        color: #fff;
     }
 
     @media (max-width: 1200px), (max-height: 720px) {

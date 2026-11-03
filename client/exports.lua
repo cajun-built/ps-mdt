@@ -21,10 +21,13 @@ exports('IsLEOJob', isLEOJob)
 exports('IsMDTOpen', function() return MDTOpen end)
 
 -- Open MDT with export. Callers may pass 'station' or 'vehicle'; the server still
--- verifies the access point, so this cannot widen MDT access.
-exports('OpenMDT', function(accessContext)
-    OpenMDT(accessContext == 'station' and 'station' or 'vehicle')
+-- verifies the access point, so this cannot widen MDT access. Pass
+-- { embedded = true } to show it inside the LEO workstation instead of the tablet.
+exports('OpenMDT', function(accessContext, options)
+    OpenMDT(accessContext == 'station' and 'station' or 'vehicle', options)
 end)
+
+exports('IsMDTEmbedded', function() return MDTOpen and MdtEmbedded end)
 
 -- Close MDT (delegates to full CloseMDT which handles animation, controls, logout tracking)
 exports('CloseMDT', function()
