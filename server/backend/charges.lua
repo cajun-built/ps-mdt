@@ -52,6 +52,19 @@ ps.registerCallback('ps-mdt:getChargeList', function(source)
 end)
 
 -- Process a fine - deduct money from citizen's bank account
+-- Sends a collected fine to the issuing officer's agency account through the LEO
+-- workstation. Without the workstation the fine is still collected, as before.
+function DepositFineToAgency(officerSource, amount, reportId)
+    if GetResourceState('cgn_leo_workstation') ~= 'started' then return false end
+    local ok, deposited = pcall(function()
+        return exports.cgn_leo_workstation:CollectFine(officerSource, amount, reportId)
+    end)
+    if not ok or deposited ~= true then
+        print(('[ps-mdt] fine of $%s was collected but could not be deposited to the agency account'):format(tostring(amount)))
+    end
+    return ok and deposited == true
+end
+
 -- Ported from ps-mdt v1 (mdt:server:removeMoney)
 local fineCooldowns = {}
 ps.registerCallback(resourceName .. ':server:processFine', function(source, payload)
@@ -127,6 +140,7 @@ ps.registerCallback(resourceName .. ':server:processFine', function(source, payl
             SET status = 'paid', processed_at = NOW()
             WHERE id = ? AND status = 'processing'
         ]], { paymentId })
+        DepositFineToAgency(src, fine, reportId)
         ps.notify(Player.source or Player.PlayerData.source, '$' .. fine .. ' fine deducted from your bank account', 'error')
 
         -- Anti-spam cooldown

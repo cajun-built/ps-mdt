@@ -132,6 +132,7 @@ ps.registerCallback(resourceName .. ':server:giveCitation', function(source, pay
         SET status = 'paid', processed_at = NOW()
         WHERE id = ? AND status = 'processing'
     ]], { paymentId })
+    if DepositFineToAgency then DepositFineToAgency(src, fine, reportId) end
 
     ps.notify(playerSrc, '$' .. fine .. ' fine deducted from your bank account', 'error')
     ps.notify(src, '$' .. fine .. ' fine issued successfully', 'success')
